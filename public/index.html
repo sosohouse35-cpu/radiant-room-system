@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Afterglow Shelter</title>
+  <title>Afterglow Item Collection</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="shell">
     <header class="brand">
       <div>
-        <p class="eyebrow">MULTIPLAYER SURVIVAL</p>
+        <p class="eyebrow">MULTIPLAYER ITEM COLLECTION</p>
         <h1>AFTERGLOW SHELTER</h1>
       </div>
       <div class="status">
@@ -60,49 +60,42 @@
     <section id="gameScreen" class="screen game-screen">
       <div id="countdownOverlay" class="overlay">
         <div id="countdown">5</div>
-        <p>벙커에서 수집을 시작합니다.</p>
+        <p>아이템 수집 준비</p>
       </div>
 
       <canvas id="gameCanvas"></canvas>
 
+      <div id="interactionPrompt" class="interaction-prompt hidden">
+        E · 아이템 줍기
+      </div>
+
+      <div class="top-left-hud">
+        <div id="floorName">1층 · 벙커</div>
+        <div class="key-help">E 줍기 · F 보관 · Q 계단</div>
+      </div>
+
       <div class="game-clock">
-        <span class="clock-label">폭발까지</span>
-        <strong id="timer">60</strong>
+        <span>폭발까지</span>
+        <strong id="timer">95</strong>
         <span>초</span>
       </div>
 
-      <div class="game-info">
-        <div id="floorName">대형 주택</div>
-        <div id="bunkerMessage">벙커에서 아이템을 보관하면 손이 비워집니다.</div>
-      </div>
-
       <div class="hands-panel">
-        <div class="hands-title">손</div>
-        <div id="handSlots" class="hand-slots">
+        <div class="hands-title">손 4칸</div>
+        <div class="hand-slots">
           <div class="hand-slot">✋</div>
           <div class="hand-slot">✋</div>
           <div class="hand-slot">✋</div>
           <div class="hand-slot">✋</div>
         </div>
-        <button id="depositButton" type="button">벙커에 보관</button>
         <div id="storedItems">보관함: 비어 있음</div>
       </div>
 
-      <div id="deathOverlay" class="death-overlay hidden">
-        <div class="death-card">
-          <p class="death-warning">☢ 폭발 발생</p>
-          <h2>죽었습니다</h2>
-          <p>제한 시간 안에 벙커로 들어가지 못했습니다.</p>
-          <button id="deathReturnButton" type="button">처음 화면으로</button>
-        </div>
-      </div>
-
-      <div class="mobile-controls">
-        <button data-dir="up">▲</button>
-        <div>
-          <button data-dir="left">◀</button>
-          <button data-dir="down">▼</button>
-          <button data-dir="right">▶</button>
+      <div id="resultOverlay" class="result-overlay hidden">
+        <div class="result-card">
+          <h2>수집 종료</h2>
+          <p id="resultText"></p>
+          <button id="returnButton">처음 화면으로</button>
         </div>
       </div>
     </section>
@@ -113,6 +106,7 @@
       <h2>새 대피조</h2>
       <input id="roomName" maxlength="24" placeholder="방 제목" required>
       <select id="maxPlayers">
+        <option value="1">1명</option>
         <option value="2">2명</option>
         <option value="4" selected>4명</option>
         <option value="6">6명</option>
@@ -122,9 +116,8 @@
         <input id="privateRoom" type="checkbox">
         비공개
       </label>
-      <p id="createError"></p>
       <div class="row">
-        <button type="button" id="closeCreateButton">취소</button>
+        <button id="closeCreateButton" type="button">취소</button>
         <button class="primary" type="submit">생성</button>
       </div>
     </form>
