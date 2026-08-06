@@ -1,371 +1,138 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-  />
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Afterglow Shelter</title>
-
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
   <main class="shell">
-
-    <!-- =========================================
-         상단 제목
-    ========================================== -->
     <header class="brand">
       <div>
-        <p class="eyebrow">
-          MULTIPLAYER SURVIVAL
-        </p>
-
-        <h1>
-          AFTERGLOW SHELTER
-        </h1>
+        <p class="eyebrow">MULTIPLAYER SURVIVAL</p>
+        <h1>AFTERGLOW SHELTER</h1>
       </div>
-
       <div class="status">
         <span id="connectionDot"></span>
-        <span id="connectionText">서버 연결 중</span>
+        <span id="connectionText">연결 중</span>
       </div>
     </header>
 
-    <!-- =========================================
-         1. 메인 화면
-    ========================================== -->
-    <section
-      id="homeScreen"
-      class="screen active"
-    >
-      <!-- 방 생성 및 참가 -->
+    <section id="homeScreen" class="screen active">
       <div class="panel">
         <h2>대피조 만들기</h2>
-
-        <p class="muted">
-          닉네임을 입력하고 새 방을 만들거나 기존 방에 참가하세요.
-        </p>
-
-        <label for="nickname">
-          플레이어 이름
-        </label>
-
-        <input
-          id="nickname"
-          type="text"
-          maxlength="14"
-          placeholder="닉네임 입력"
-          autocomplete="off"
-        />
-
+        <input id="nickname" maxlength="14" placeholder="닉네임">
         <div class="row">
-          <button
-            id="openCreateButton"
-            class="primary"
-            type="button"
-          >
-            새 방 만들기
-          </button>
-
-          <button
-            id="quickJoinButton"
-            type="button"
-          >
-            빠른 참가
-          </button>
+          <button id="openCreateButton" class="primary">새 방</button>
+          <button id="quickJoinButton">빠른 참가</button>
         </div>
-
         <div class="row">
-          <input
-            id="roomCodeInput"
-            type="text"
-            maxlength="6"
-            placeholder="6자리 방 코드"
-            autocomplete="off"
-          />
-
-          <button
-            id="joinCodeButton"
-            type="button"
-          >
-            코드 참가
-          </button>
+          <input id="roomCodeInput" maxlength="6" placeholder="방 코드">
+          <button id="joinCodeButton">코드 참가</button>
         </div>
       </div>
 
-      <!-- 공개방 목록 -->
       <div class="panel">
         <div class="panel-head">
-          <div>
-            <p class="eyebrow">
-              PUBLIC ROOMS
-            </p>
-
-            <h2>공개방</h2>
-          </div>
-
-          <button
-            id="refreshButton"
-            type="button"
-            aria-label="방 목록 새로고침"
-          >
-            ↻
-          </button>
+          <h2>공개방</h2>
+          <button id="refreshButton">↻</button>
         </div>
+        <div id="roomList"></div>
+      </div>
+    </section>
 
-        <div id="roomList">
-          <p class="muted">
-            공개방 목록을 불러오는 중입니다.
-          </p>
+    <section id="lobbyScreen" class="screen">
+      <div class="panel">
+        <div class="panel-head">
+          <h2 id="lobbyName">대피조</h2>
+          <button id="copyCodeButton">------</button>
+        </div>
+        <div id="playerList"></div>
+        <div class="row">
+          <button id="leaveButton">나가기</button>
+          <button id="readyButton">준비</button>
+          <button id="startButton" class="primary hidden">게임 시작</button>
         </div>
       </div>
     </section>
 
-    <!-- =========================================
-         2. 대기실 화면
-    ========================================== -->
-    <section
-      id="lobbyScreen"
-      class="screen"
-    >
-      <div class="panel">
-        <div class="panel-head">
-          <div>
-            <p class="eyebrow">
-              WAITING ROOM
-            </p>
-
-            <h2 id="lobbyName">
-              대피조
-            </h2>
-          </div>
-
-          <div>
-            <span class="muted">
-              방 코드
-            </span>
-
-            <button
-              id="copyCodeButton"
-              type="button"
-            >
-              ------
-            </button>
-          </div>
-        </div>
-
-        <div id="playerList">
-          <p class="muted">
-            플레이어 정보를 불러오는 중입니다.
-          </p>
-        </div>
-
-        <div class="row">
-          <button
-            id="leaveButton"
-            type="button"
-          >
-            방 나가기
-          </button>
-
-          <button
-            id="readyButton"
-            type="button"
-          >
-            준비
-          </button>
-
-          <button
-            id="startButton"
-            class="primary hidden"
-            type="button"
-          >
-            게임 시작
-          </button>
-        </div>
-      </div>
-    </section>
-
-    <!-- =========================================
-         3. 게임 화면
-    ========================================== -->
-    <section
-      id="gameScreen"
-      class="screen game-screen"
-    >
-      <!-- 시작 카운트다운 -->
-      <div
-        id="countdownOverlay"
-        class="overlay"
-      >
-        <div id="countdown">
-          5
-        </div>
-
-        <p>
-          아이템 수집 준비
-        </p>
+    <section id="gameScreen" class="screen game-screen">
+      <div id="countdownOverlay" class="overlay">
+        <div id="countdown">5</div>
+        <p>벙커에서 수집을 시작합니다.</p>
       </div>
 
-      <!--
-        app.js에서 아래 요소를 찾은 뒤
-        canvas.getContext("2d")를 실행하므로
-        이 canvas가 반드시 존재해야 합니다.
-      -->
-      <canvas
-        id="gameCanvas"
-        aria-label="게임 플레이 화면"
-      ></canvas>
+      <canvas id="gameCanvas"></canvas>
 
-      <!-- 게임 정보 -->
-      <div class="hud">
-        <div>
-          <b id="timer">60</b>
-          <span>초</span>
+      <div class="game-clock">
+        <span class="clock-label">폭발까지</span>
+        <strong id="timer">60</strong>
+        <span>초</span>
+      </div>
+
+      <div class="game-info">
+        <div id="floorName">대형 주택</div>
+        <div id="bunkerMessage">벙커에서 아이템을 보관하면 손이 비워집니다.</div>
+      </div>
+
+      <div class="hands-panel">
+        <div class="hands-title">손</div>
+        <div id="handSlots" class="hand-slots">
+          <div class="hand-slot">✋</div>
+          <div class="hand-slot">✋</div>
+          <div class="hand-slot">✋</div>
+          <div class="hand-slot">✋</div>
         </div>
+        <button id="depositButton" type="button">벙커에 보관</button>
+        <div id="storedItems">보관함: 비어 있음</div>
+      </div>
 
-        <div id="floorName">
-          대형 주택
-        </div>
-
-        <div id="inventory">
-          가방: 비어 있음
+      <div id="deathOverlay" class="death-overlay hidden">
+        <div class="death-card">
+          <p class="death-warning">☢ 폭발 발생</p>
+          <h2>죽었습니다</h2>
+          <p>제한 시간 안에 벙커로 들어가지 못했습니다.</p>
+          <button id="deathReturnButton" type="button">처음 화면으로</button>
         </div>
       </div>
 
-      <!-- 모바일 방향키 -->
       <div class="mobile-controls">
-        <button
-          type="button"
-          data-dir="up"
-          aria-label="위로 이동"
-        >
-          ▲
-        </button>
-
+        <button data-dir="up">▲</button>
         <div>
-          <button
-            type="button"
-            data-dir="left"
-            aria-label="왼쪽으로 이동"
-          >
-            ◀
-          </button>
-
-          <button
-            type="button"
-            data-dir="down"
-            aria-label="아래로 이동"
-          >
-            ▼
-          </button>
-
-          <button
-            type="button"
-            data-dir="right"
-            aria-label="오른쪽으로 이동"
-          >
-            ▶
-          </button>
+          <button data-dir="left">◀</button>
+          <button data-dir="down">▼</button>
+          <button data-dir="right">▶</button>
         </div>
       </div>
     </section>
   </main>
 
-  <!-- =========================================
-       방 생성 창
-  ========================================== -->
   <dialog id="createDialog">
     <form id="createForm">
-      <p class="eyebrow">
-        CREATE ROOM
-      </p>
-
-      <h2>
-        새 대피조 만들기
-      </h2>
-
-      <label for="roomName">
-        방 제목
-      </label>
-
-      <input
-        id="roomName"
-        type="text"
-        maxlength="24"
-        placeholder="방 제목 입력"
-        required
-      />
-
-      <label for="maxPlayers">
-        최대 인원
-      </label>
-
+      <h2>새 대피조</h2>
+      <input id="roomName" maxlength="24" placeholder="방 제목" required>
       <select id="maxPlayers">
-        <option value="2">
-          2명
-        </option>
-
-        <option
-          value="4"
-          selected
-        >
-          4명
-        </option>
-
-        <option value="6">
-          6명
-        </option>
-
-        <option value="8">
-          8명
-        </option>
+        <option value="2">2명</option>
+        <option value="4" selected>4명</option>
+        <option value="6">6명</option>
+        <option value="8">8명</option>
       </select>
-
       <label>
-        <input
-          id="privateRoom"
-          type="checkbox"
-        />
-
-        비공개 방
+        <input id="privateRoom" type="checkbox">
+        비공개
       </label>
-
-      <p
-        id="createError"
-        class="error"
-      ></p>
-
+      <p id="createError"></p>
       <div class="row">
-        <button
-          id="closeCreateButton"
-          type="button"
-        >
-          취소
-        </button>
-
-        <button
-          class="primary"
-          type="submit"
-        >
-          방 생성
-        </button>
+        <button type="button" id="closeCreateButton">취소</button>
+        <button class="primary" type="submit">생성</button>
       </div>
     </form>
   </dialog>
 
-  <!-- 알림 -->
   <div id="toast"></div>
 
-  <!-- Socket.IO -->
   <script src="/socket.io/socket.io.js"></script>
-
-  <!-- 게임 코드 -->
   <script src="app.js"></script>
 </body>
 </html>
