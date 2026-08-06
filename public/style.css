@@ -1,11 +1,10 @@
 :root {
-  --bg: #090b09;
-  --panel: #171b18;
-  --line: #3e493f;
-  --text: #f0f0df;
-  --muted: #a5aa9e;
+  --bg: #0e1110;
+  --panel: #1b201c;
+  --line: #485247;
+  --text: #f3f0df;
+  --muted: #aeb3aa;
   --acid: #d6f055;
-  --danger: #ef5b4c;
 }
 
 * {
@@ -19,10 +18,6 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: "Malgun Gothic", Arial, sans-serif;
-}
-
-body {
-  background: radial-gradient(circle at 70% 0, #232a1c, #090b09 55%);
 }
 
 .shell {
@@ -44,28 +39,27 @@ h1 {
   margin: 0;
   color: var(--acid);
   font-family: Impact, sans-serif;
-  letter-spacing: 0.03em;
-  font-size: clamp(2.4rem, 6vw, 5rem);
+  font-size: clamp(2.5rem, 6vw, 5rem);
 }
 
 .eyebrow {
   color: #f1a640;
   font-size: 0.72rem;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.17em;
 }
 
 .status {
-  border: 1px solid var(--line);
   padding: 8px 12px;
+  border: 1px solid var(--line);
 }
 
 #connectionDot {
   display: inline-block;
   width: 9px;
   height: 9px;
+  margin-right: 8px;
   border-radius: 50%;
   background: #f1a640;
-  margin-right: 8px;
 }
 
 #connectionDot.online {
@@ -88,7 +82,7 @@ h1 {
 .panel {
   padding: 24px;
   border: 1px solid var(--line);
-  background: rgba(23, 27, 24, 0.96);
+  background: var(--panel);
 }
 
 input,
@@ -96,7 +90,7 @@ select,
 button {
   min-height: 46px;
   border: 1px solid var(--line);
-  background: #101310;
+  background: #111511;
   color: var(--text);
   font: inherit;
   padding: 0 14px;
@@ -133,14 +127,14 @@ button {
   display: flex;
   justify-content: space-between;
   padding: 12px;
-  border: 1px solid #303832;
-  background: #111411;
+  border: 1px solid #343d35;
+  background: #121612;
 }
 
 dialog {
   width: min(440px, calc(100% - 24px));
   border: 1px solid var(--line);
-  background: #171b18;
+  background: var(--panel);
   color: var(--text);
 }
 
@@ -151,11 +145,11 @@ dialog form {
 #toast {
   position: fixed;
   left: 50%;
-  bottom: 25px;
+  bottom: 26px;
   z-index: 100;
   transform: translateX(-50%);
   padding: 10px 16px;
-  border: 1px solid #744;
+  border: 1px solid #755;
   background: #211;
   opacity: 0;
   pointer-events: none;
@@ -166,73 +160,88 @@ dialog form {
   opacity: 1;
 }
 
-/* 게임은 브라우저 창 크기만 사용하며 전체화면 API는 호출하지 않습니다. */
 .game-screen {
   position: fixed !important;
   inset: 0;
   z-index: 20;
   overflow: hidden;
-  background: #111;
+  background: #d8c7a5;
 }
 
 #gameCanvas {
   display: block;
   width: 100vw;
   height: 100vh;
-  background: #171a15;
 }
 
-.game-clock {
+.overlay,
+.result-overlay {
   position: fixed;
-  top: 16px;
-  right: 16px;
-  z-index: 25;
-  min-width: 150px;
-  padding: 10px 14px;
-  border: 1px solid #65705e;
-  background: rgba(8, 10, 8, 0.88);
-  text-align: right;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.86);
+  text-align: center;
 }
 
-.game-clock strong {
-  margin-left: 8px;
+#countdown {
   color: var(--acid);
-  font-size: 2rem;
+  font-family: Impact, sans-serif;
+  font-size: 10rem;
+  line-height: 1;
 }
 
-.clock-label {
-  color: var(--muted);
-}
-
-.game-info {
+.top-left-hud {
   position: fixed;
-  top: 16px;
-  left: 16px;
+  top: 14px;
+  left: 14px;
   z-index: 25;
   display: grid;
   gap: 6px;
 }
 
-.game-info > div {
+.top-left-hud > div,
+.game-clock,
+.hands-panel {
+  border: 1px solid #6d725e;
+  background: rgba(255, 248, 225, 0.93);
+  color: #2a261f;
+}
+
+.top-left-hud > div {
   padding: 8px 12px;
-  border: 1px solid #65705e;
-  background: rgba(8, 10, 8, 0.88);
+}
+
+.key-help {
+  font-size: 0.82rem;
+}
+
+.game-clock {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 25;
+  padding: 9px 13px;
+}
+
+.game-clock strong {
+  margin: 0 7px;
+  color: #7b8f15;
+  font-size: 2rem;
 }
 
 .hands-panel {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
+  right: 14px;
+  bottom: 14px;
   z-index: 25;
-  width: min(340px, calc(100vw - 32px));
+  width: 320px;
   padding: 12px;
-  border: 1px solid #65705e;
-  background: rgba(8, 10, 8, 0.9);
 }
 
 .hands-title {
   margin-bottom: 8px;
-  color: var(--acid);
   font-weight: 900;
 }
 
@@ -245,71 +254,36 @@ dialog form {
 .hand-slot {
   display: grid;
   place-items: center;
-  min-height: 52px;
-  border: 1px solid #596354;
-  background: #151a14;
-  font-size: 1.45rem;
+  min-height: 54px;
+  border: 1px solid #837d68;
+  background: #f4ead3;
+  font-size: 1.5rem;
 }
 
 .hand-slot.filled {
-  border-color: var(--acid);
+  border-color: #758b1c;
+  background: #edf4c7;
 }
 
-#depositButton {
-  width: 100%;
-  margin-top: 9px;
-}
-
-#storedItems {
-  margin-top: 8px;
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.overlay,
-.death-overlay {
+.interaction-prompt {
   position: fixed;
-  inset: 0;
-  z-index: 35;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.88);
-  text-align: center;
+  left: 50%;
+  bottom: 90px;
+  z-index: 30;
+  transform: translateX(-50%);
+  padding: 11px 17px;
+  border: 1px solid #817558;
+  background: rgba(255, 249, 229, 0.96);
+  color: #2b261f;
+  font-weight: 900;
 }
 
-#countdown {
-  color: var(--acid);
-  font-family: Impact, sans-serif;
-  font-size: 10rem;
-  line-height: 1;
-}
-
-.death-card {
-  width: min(480px, calc(100% - 30px));
-  padding: 34px;
-  border: 1px solid #8a423a;
-  background: #211210;
-}
-
-.death-card h2,
-.death-warning {
-  color: var(--danger);
-}
-
-.mobile-controls {
-  display: none;
-  position: fixed;
-  left: 16px;
-  bottom: 16px;
-  z-index: 26;
-  text-align: center;
-}
-
-.mobile-controls button {
-  width: 58px;
-  height: 58px;
-  padding: 0;
-  background: rgba(10, 12, 10, 0.82);
+.result-card {
+  width: min(450px, calc(100% - 28px));
+  padding: 30px;
+  border: 1px solid #747761;
+  background: #f4ecd7;
+  color: #2b261f;
 }
 
 @media (max-width: 760px) {
@@ -322,23 +296,9 @@ dialog form {
     flex-direction: column;
   }
 
-  .mobile-controls {
-    display: block;
-  }
-
   .hands-panel {
-    right: 8px;
-    bottom: 8px;
-    width: 260px;
-  }
-
-  .game-clock {
-    top: 8px;
-    right: 8px;
-  }
-
-  .game-info {
-    top: 8px;
-    left: 8px;
+    width: 250px;
+    right: 7px;
+    bottom: 7px;
   }
 }
