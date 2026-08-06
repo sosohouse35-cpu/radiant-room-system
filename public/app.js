@@ -1,1667 +1,232 @@
 "use strict";
-
-/* =========================================================
-   서버 연결
-========================================================= */
-
-const socket = io();
-
-/* =========================================================
-   화면 및 로비 요소
-========================================================= */
-
-const screens = {
-  home: document.getElementById("homeScreen"),
-  lobby: document.getElementById("lobbyScreen"),
-  game: document.getElementById("gameScreen"),
-};
-
-const connectionDot = document.getElementById("connectionDot");
-const connectionText = document.getElementById("connectionText");
-
-const nicknameInput = document.getElementById("nickname");
-const roomCodeInput = document.getElementById("roomCodeInput");
-const roomList = document.getElementById("roomList");
-
-const openCreateButton = document.getElementById("openCreateButton");
-const quickJoinButton = document.getElementById("quickJoinButton");
-const joinCodeButton = document.getElementById("joinCodeButton");
-const refreshButton = document.getElementById("refreshButton");
-
-const createDialog = document.getElementById("createDialog");
-const createForm = document.getElementById("createForm");
-const closeCreateButton = document.getElementById("closeCreateButton");
-const createError = document.getElementById("createError");
-
-const roomNameInput = document.getElementById("roomName");
-const maxPlayersSelect = document.getElementById("maxPlayers");
-const privateRoomInput = document.getElementById("privateRoom");
-
-const lobbyName = document.getElementById("lobbyName");
-const copyCodeButton = document.getElementById("copyCodeButton");
-const playerList = document.getElementById("playerList");
-
-const leaveButton = document.getElementById("leaveButton");
-const readyButton = document.getElementById("readyButton");
-const startButton = document.getElementById("startButton");
-
-const toast = document.getElementById("toast");
-
-/* =========================================================
-   게임 요소
-========================================================= */
-
-const preCountdownPanel = document.getElementById("preCountdownPanel");
-const countdownElement = document.getElementById("countdown");
-const gameMessage = document.getElementById("gameMessage");
-
-const farmingPanel = document.getElementById("farmingPanel");
-const farmingTimer = document.getElementById("farmingTimer");
-
-const floorStage = document.getElementById("floorStage");
-const playerElement = document.getElementById("player");
-const floorChips = document.querySelectorAll(".floor-chip");
-
-const inventoryList = document.getElementById("inventoryList");
-
-const resultPanel = document.getElementById("resultPanel");
-const resultTitle = document.getElementById("resultTitle");
-const resultHeadline = document.getElementById("resultHeadline");
-const resultInventory = document.getElementById("resultInventory");
-const resultSub = document.getElementById("resultSub");
-const returnHomeButton = document.getElementById("returnHomeButton");
-
-const touchButtons = document.querySelectorAll(".touch-btn");
-
-/* =========================================================
-   로비 상태
-========================================================= */
-
-let currentRoom = null;
-let myId = null;
-let toastTimer = null;
-let countdownHandle = null;
-
-/* =========================================================
-   게임 기본 설정
-========================================================= */
-
-const STAGE_WIDTH = 900;
-const STAGE_HEIGHT = 500;
-
-const PLAYER_SIZE = 34;
-const PLAYER_SPEED = 300;
-
-const TOTAL_SECONDS = 60;
-const STAIR_COOLDOWN = 500;
-
-/* =========================================================
-   아이템 종류
-========================================================= */
-
-const ITEM_POOL = {
-  water: {
-    name: "물병",
-    icon: "💧",
-  },
-
-  can: {
-    name: "통조림",
-    icon: "🥫",
-  },
-
-  mask: {
-    name: "방독면",
-    icon: "😷",
-  },
-
-  bag: {
-    name: "배낭",
-    icon: "🎒",
-  },
-
-  medkit: {
-    name: "구급상자",
-    icon: "💊",
-  },
-
-  radio: {
-    name: "라디오",
-    icon: "📻",
-  },
-
-  battery: {
-    name: "건전지",
-    icon: "🔋",
-  },
-
-  knife: {
-    name: "칼",
-    icon: "🔪",
-  },
-
-  blanket: {
-    name: "담요",
-    icon: "🧣",
-  },
-};
-
-/* =========================================================
-   층별 맵 설정
-========================================================= */
-
-const FLOOR_DEFINITIONS = {
-  1: {
-    label: "1층 · 거실",
-
-    obstacles: [
-      {
-        x: 300,
-        y: 190,
-        w: 170,
-        h: 70,
-      },
-
-      {
-        x: 560,
-        y: 300,
-        w: 110,
-        h: 60,
-      },
-    ],
-
-    items: [
-      {
-        poolId: "bag",
-        x: 110,
-        y: 110,
-        w: 40,
-        h: 40,
-      },
-
-      {
-        poolId: "can",
-        x: 730,
-        y: 110,
-        w: 40,
-        h: 40,
-      },
-
-      {
-        poolId: "water",
-        x: 340,
-        y: 400,
-        w: 40,
-        h: 40,
-      },
-
-      {
-        poolId: "battery",
-        x: 630,
-        y: 400,
-        w: 40,
-        h: 40,
-      },
-    ],
-
-    stairs: [
-      {
-        x: 400,
-        y: 30,
-        w: 110,
-        h: 44,
-        label: "계단 ↑ 2층",
-        to: 2,
-
-        spawn: {
-          x: 415,
-          y: 400,
-        },
-      },
-    ],
-
-    bunker: {
-      x: 20,
-      y: 420,
-      w: 140,
-      h: 60,
-      label: "☢ 지하 벙커 입구",
-    },
-  },
-
-  2: {
-    label: "2층",
-
-    obstacles: [
-      {
-        x: 70,
-        y: 240,
-        w: 150,
-        h: 70,
-      },
-
-      {
-        x: 660,
-        y: 240,
-        w: 130,
-        h: 60,
-      },
-    ],
-
-    items: [
-      {
-        poolId: "medkit",
-        x: 130,
-        y: 110,
-        w: 40,
-        h: 40,
-      },
-
-      {
-        poolId: "water",
-        x: 720,
-        y: 90,
-        w: 40,
-        h: 40,
-      },
-
-      {
-        poolId: "mask",
-        x: 320,
-        y: 400,
-        w: 40,
-        h: 40,
-      },
-
-      {
-        poolId: "can",
-        x: 600,
-        y: 400,
-        w: 40,
-        h: 40,
-      },
-    ],
-
-    stairs: [
-      {
-        x: 400,
-        y: 30,
-        w: 110,
-        h: 44,
-        label: "계단 ↑ 3층",
-        to: 3,
-
-        spawn: {
-          x: 415,
-          y: 400,
-        },
-      },
-
-      {
-        x: 400,
-        y: 440,
-        w: 110,
-        h: 44,
-        label: "계단 ↓ 1층",
-        to: 1,
-
-        spawn: {
-          x: 415,
-          y: 70,
-        },
-      },
-    ],
-  },
-
-  3: {
-    label: "3층 · 다락방",
-
-    obstacles: [
-      {
-        x: 380,
-        y: 190,
-        w: 90,
-        h: 60,
-      },
-
-      {
-        x: 140,
-        y: 300,
-        w: 70,
-        h: 50,
-      },
-
-      {
-        x: 660,
-        y: 280,
-        w: 60,
-        h: 70,
-      },
-    ],
-
-    items: [
-      {
-        poolId: "radio",
-        x: 90,
-        y: 90,
-        w: 40,
-        h: 40,
-      },
-
-      {
-        poolId: "battery",
-        x: 720,
-        y: 110,
-        w: 40,
-        h: 40,
-      },
-
-      {
-        poolId: "blanket",
-        x: 260,
-        y: 400,
-        w: 40,
-        h: 40,
-      },
-
-      {
-        poolId: "knife",
-        x: 640,
-        y: 400,
-        w: 40,
-        h: 40,
-      },
-    ],
-
-    stairs: [
-      {
-        x: 400,
-        y: 440,
-        w: 110,
-        h: 44,
-        label: "계단 ↓ 2층",
-        to: 2,
-
-        spawn: {
-          x: 415,
-          y: 70,
-        },
-      },
-    ],
-  },
-};
-
-/* =========================================================
-   게임 상태
-========================================================= */
-
-let gameRunning = false;
-
-let currentFloor = 1;
-
-let player = {
-  x: 430,
-  y: 250,
-};
-
-let inventory = {};
-
-let floorItems = {};
-
-let remainingSeconds = TOTAL_SECONDS;
-
-let activeDirections = new Set();
-
-let timerHandle = null;
-let animationHandle = null;
-
-let previousFrameTime = 0;
-let stairCooldownUntil = 0;
-
-/* =========================================================
-   공통 함수
-========================================================= */
-
-function showScreen(screenName) {
-  Object.entries(screens).forEach(([name, screen]) => {
-    screen.classList.toggle("active", name === screenName);
-  });
-}
-
-function getNickname() {
-  const value = nicknameInput.value.trim();
-
-  if (value) {
-    localStorage.setItem("afterglow-nickname", value);
-  }
-
-  return value;
-}
-
-function showToast(message) {
-  toast.textContent = message;
-  toast.classList.add("show");
-
-  clearTimeout(toastTimer);
-
-  toastTimer = setTimeout(() => {
-    toast.classList.remove("show");
-  }, 2500);
-}
-
-function percent(value, axis) {
-  const total = axis === "x"
-    ? STAGE_WIDTH
-    : STAGE_HEIGHT;
-
-  return `${(value / total) * 100}%`;
-}
-
-function isColliding(a, b) {
-  return (
-    a.x < b.x + b.w &&
-    a.x + a.w > b.x &&
-    a.y < b.y + b.h &&
-    a.y + a.h > b.y
-  );
-}
-
-/* =========================================================
-   방 참가 처리
-========================================================= */
-
-function handleJoinResponse(response) {
-  if (!response?.ok) {
-    showToast(
-      response?.message ||
-      "요청을 처리하지 못했습니다."
-    );
-
-    return;
-  }
-
-  currentRoom = response.room;
-  myId = response.myId;
-
-  renderLobby();
-  showScreen("lobby");
-
-  if (createDialog.open) {
-    createDialog.close();
-  }
-}
-
-/* =========================================================
-   공개방 목록
-========================================================= */
-
-function renderRoomList(rooms) {
-  roomList.innerHTML = "";
-
-  if (!Array.isArray(rooms) || rooms.length === 0) {
-    roomList.innerHTML = `
-      <div class="empty">
-        현재 공개 대피조가 없습니다.<br />
-        새로운 방을 만들어 보세요.
-      </div>
-    `;
-
-    return;
-  }
-
-  rooms.forEach((room) => {
-    const card = document.createElement("article");
-    card.className = "room-card";
-
-    const information = document.createElement("div");
-
-    const title = document.createElement("h3");
-    title.textContent = room.name;
-
-    const metadata = document.createElement("p");
-    metadata.textContent =
-      `${room.playerCount}/${room.maxPlayers}명 · 코드 ${room.code}`;
-
-    information.append(title, metadata);
-
-    const joinButton = document.createElement("button");
-    joinButton.type = "button";
-    joinButton.textContent = "참가";
-
-    joinButton.disabled =
-      room.playerCount >= room.maxPlayers;
-
-    joinButton.addEventListener("click", () => {
-      const nickname = getNickname();
-
-      if (!nickname) {
-        showToast("닉네임을 먼저 입력하세요.");
-        nicknameInput.focus();
-        return;
-      }
-
-      socket.emit(
-        "join-room",
-        {
-          nickname,
-          code: room.code,
-        },
-        handleJoinResponse
-      );
-    });
-
-    card.append(information, joinButton);
-    roomList.appendChild(card);
-  });
-}
-
-/* =========================================================
-   로비 렌더링
-========================================================= */
-
-function renderLobby() {
-  if (!currentRoom) {
-    return;
-  }
-
-  lobbyName.textContent = currentRoom.name;
-  copyCodeButton.textContent = currentRoom.code;
-
-  playerList.innerHTML = "";
-
-  currentRoom.players.forEach((roomPlayer) => {
-    const card = document.createElement("div");
-
-    card.className =
-      `player-card ${roomPlayer.ready ? "ready" : ""}`;
-
-    const avatar = document.createElement("div");
-    avatar.className = "avatar";
-
-    avatar.textContent =
-      roomPlayer.nickname
-        .slice(0, 1)
-        .toUpperCase();
-
-    const nameArea = document.createElement("div");
-
-    const name = document.createElement("strong");
-    name.textContent = roomPlayer.nickname;
-
-    nameArea.appendChild(name);
-
-    if (roomPlayer.id === currentRoom.hostId) {
-      const hostBadge = document.createElement("span");
-
-      hostBadge.className = "host-badge";
-      hostBadge.textContent = "방장";
-      hostBadge.style.marginLeft = "8px";
-
-      nameArea.appendChild(hostBadge);
-    }
-
-    const readyBadge = document.createElement("span");
-
-    readyBadge.className =
-      `ready-badge ${roomPlayer.ready ? "on" : ""}`;
-
-    readyBadge.textContent =
-      roomPlayer.ready
-        ? "준비 완료"
-        : "대기 중";
-
-    card.append(
-      avatar,
-      nameArea,
-      readyBadge
-    );
-
-    playerList.appendChild(card);
-  });
-
-  const isHost =
-    myId === currentRoom.hostId;
-
-  readyButton.classList.toggle(
-    "hidden",
-    isHost
-  );
-
-  startButton.classList.toggle(
-    "hidden",
-    !isHost
-  );
-
-  const me = currentRoom.players.find(
-    (roomPlayer) => roomPlayer.id === myId
-  );
-
-  readyButton.textContent =
-    me?.ready
-      ? "준비 취소"
-      : "준비";
-}
-
-/* =========================================================
-   방 생성 및 참가 버튼
-========================================================= */
-
-openCreateButton.addEventListener("click", () => {
-  if (!getNickname()) {
-    showToast("닉네임을 먼저 입력하세요.");
-    nicknameInput.focus();
-    return;
-  }
-
-  createError.textContent = "";
-  createDialog.showModal();
-});
-
-closeCreateButton.addEventListener("click", () => {
-  createDialog.close();
-});
-
-createForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-
-  createError.textContent = "";
-
-  const nickname = getNickname();
-
-  if (!nickname) {
-    createError.textContent =
-      "닉네임을 입력하세요.";
-
-    return;
-  }
-
-  socket.emit(
-    "create-room",
-    {
-      nickname,
-      roomName: roomNameInput.value.trim(),
-      maxPlayers: maxPlayersSelect.value,
-      private: privateRoomInput.checked,
-    },
-
-    (response) => {
-      if (!response?.ok) {
-        createError.textContent =
-          response?.message ||
-          "방을 만들지 못했습니다.";
-
-        return;
-      }
-
-      handleJoinResponse(response);
-
-      roomNameInput.value = "";
-      maxPlayersSelect.value = "4";
-      privateRoomInput.checked = false;
-    }
-  );
-});
-
-joinCodeButton.addEventListener("click", () => {
-  const nickname = getNickname();
-
-  if (!nickname) {
-    showToast("닉네임을 먼저 입력하세요.");
-    nicknameInput.focus();
-    return;
-  }
-
-  const code =
-    roomCodeInput.value
-      .trim()
-      .toUpperCase();
-
-  if (code.length !== 6) {
-    showToast("6자리 방 코드를 입력하세요.");
-    roomCodeInput.focus();
-    return;
-  }
-
-  socket.emit(
-    "join-room",
-    {
-      nickname,
-      code,
-    },
-    handleJoinResponse
-  );
-});
-
-roomCodeInput.addEventListener("input", () => {
-  roomCodeInput.value =
-    roomCodeInput.value
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "")
-      .slice(0, 6);
-});
-
-roomCodeInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    joinCodeButton.click();
-  }
-});
-
-quickJoinButton.addEventListener("click", () => {
-  const nickname = getNickname();
-
-  if (!nickname) {
-    showToast("닉네임을 먼저 입력하세요.");
-    nicknameInput.focus();
-    return;
-  }
-
-  socket.emit(
-    "quick-join",
-    {
-      nickname,
-    },
-    handleJoinResponse
-  );
-});
-
-refreshButton.addEventListener("click", () => {
-  socket.emit("get-room-list");
-});
-
-/* =========================================================
-   로비 버튼
-========================================================= */
-
-readyButton.addEventListener("click", () => {
-  socket.emit(
-    "toggle-ready",
-    (response) => {
-      if (!response?.ok) {
-        showToast(
-          response?.message ||
-          "준비 상태를 변경하지 못했습니다."
-        );
-      }
-    }
-  );
-});
-
-startButton.addEventListener("click", () => {
-  socket.emit(
-    "start-game",
-    (response) => {
-      if (!response?.ok) {
-        showToast(
-          response?.message ||
-          "게임을 시작하지 못했습니다."
-        );
-      }
-    }
-  );
-});
-
-leaveButton.addEventListener("click", () => {
-  socket.emit(
-    "leave-room",
-    () => {
-      currentRoom = null;
-      myId = null;
-
-      showScreen("home");
-    }
-  );
-});
-
-copyCodeButton.addEventListener("click", async () => {
-  if (!currentRoom) {
-    return;
-  }
-
-  try {
-    await navigator.clipboard.writeText(
-      currentRoom.code
-    );
-
-    showToast("방 코드가 복사되었습니다.");
-  } catch (error) {
-    showToast(
-      `방 코드: ${currentRoom.code}`
-    );
-  }
-});
-
-/* =========================================================
-   Socket.IO 서버 이벤트
-========================================================= */
-
-socket.on("connect", () => {
-  connectionText.textContent = "서버 연결됨";
-  connectionDot.classList.add("online");
-});
-
-socket.on("disconnect", () => {
-  connectionText.textContent =
-    "서버 연결 끊김";
-
-  connectionDot.classList.remove("online");
-});
-
-socket.on("room-list", (rooms) => {
-  renderRoomList(rooms);
-});
-
-socket.on("room-updated", (room) => {
-  currentRoom = room;
-  renderLobby();
-});
-
-/* =========================================================
-   게임 시작 이벤트
-========================================================= */
-
-socket.on("game-started", () => {
-  showScreen("game");
-
-  startPreCountdown();
-});
-
-/* =========================================================
-   게임 시작 전 5초 카운트다운
-========================================================= */
-
-function startPreCountdown() {
-  stopCollectGame();
-
-  preCountdownPanel.classList.remove("hidden");
-  farmingPanel.classList.add("hidden");
-  resultPanel.classList.add("hidden");
-
-  let count = 5;
-
-  countdownElement.textContent = count;
-
-  gameMessage.textContent =
-    "게임 맵을 준비하고 있습니다.";
-
-  if (countdownHandle) {
-    clearInterval(countdownHandle);
-  }
-
-  countdownHandle = setInterval(() => {
-    count -= 1;
-
-    if (count > 0) {
-      countdownElement.textContent = count;
-      return;
-    }
-
-    if (count === 0) {
-      countdownElement.textContent = "GO";
-      gameMessage.textContent =
-        "아이템을 챙기고 벙커로 이동하세요.";
-
-      return;
-    }
-
-    clearInterval(countdownHandle);
-    countdownHandle = null;
-
-    startCollectGame();
-  }, 1000);
-}
-
-/* =========================================================
-   아이템 인스턴스 생성
-========================================================= */
-
-function buildFloorItems() {
-  floorItems = {};
-
-  Object.keys(FLOOR_DEFINITIONS).forEach(
-    (floorNumberText) => {
-      const floorNumber =
-        Number(floorNumberText);
-
-      floorItems[floorNumber] =
-        FLOOR_DEFINITIONS[floorNumber]
-          .items
-          .map((item, index) => ({
-            instanceId:
-              `${floorNumber}-${index}`,
-
-            poolId: item.poolId,
-
-            x: item.x,
-            y: item.y,
-            w: item.w,
-            h: item.h,
-
-            collected: false,
-          }));
-    }
-  );
-}
-
-/* =========================================================
-   층 렌더링
-========================================================= */
-
-function renderFloor(floorNumber) {
-  currentFloor = floorNumber;
-
-  const floor =
-    FLOOR_DEFINITIONS[floorNumber];
-
-  floorStage.innerHTML = "";
-
-  floor.obstacles.forEach((obstacle) => {
-    const element =
-      document.createElement("div");
-
-    element.className =
-      "obstacle-block";
-
-    element.style.left =
-      percent(obstacle.x, "x");
-
-    element.style.top =
-      percent(obstacle.y, "y");
-
-    element.style.width =
-      percent(obstacle.w, "x");
-
-    element.style.height =
-      percent(obstacle.h, "y");
-
-    floorStage.appendChild(element);
-  });
-
-  floorItems[floorNumber].forEach(
-    (itemInstance) => {
-      if (itemInstance.collected) {
-        return;
-      }
-
-      const itemDefinition =
-        ITEM_POOL[itemInstance.poolId];
-
-      const element =
-        document.createElement("div");
-
-      element.className = "item-token";
-
-      element.dataset.instanceId =
-        itemInstance.instanceId;
-
-      element.style.left =
-        percent(itemInstance.x, "x");
-
-      element.style.top =
-        percent(itemInstance.y, "y");
-
-      element.style.width =
-        percent(itemInstance.w, "x");
-
-      element.style.height =
-        percent(itemInstance.h, "y");
-
-      element.innerHTML = `
-        <span class="tok-icon">
-          ${itemDefinition.icon}
-        </span>
-
-        <span class="tok-name">
-          ${itemDefinition.name}
-        </span>
-      `;
-
-      floorStage.appendChild(element);
-    }
-  );
-
-  floor.stairs.forEach((stair) => {
-    const element =
-      document.createElement("div");
-
-    element.className = "stair-zone";
-
-    element.style.left =
-      percent(stair.x, "x");
-
-    element.style.top =
-      percent(stair.y, "y");
-
-    element.style.width =
-      percent(stair.w, "x");
-
-    element.style.height =
-      percent(stair.h, "y");
-
-    element.textContent =
-      stair.label;
-
-    floorStage.appendChild(element);
-  });
-
-  if (floor.bunker) {
-    const bunkerElement =
-      document.createElement("div");
-
-    bunkerElement.className =
-      "bunker-door";
-
-    bunkerElement.style.left =
-      percent(floor.bunker.x, "x");
-
-    bunkerElement.style.top =
-      percent(floor.bunker.y, "y");
-
-    bunkerElement.style.width =
-      percent(floor.bunker.w, "x");
-
-    bunkerElement.style.height =
-      percent(floor.bunker.h, "y");
-
-    bunkerElement.textContent =
-      floor.bunker.label;
-
-    floorStage.appendChild(
-      bunkerElement
-    );
-  }
-
-  floorStage.appendChild(playerElement);
-
-  floorChips.forEach((chip) => {
-    chip.classList.toggle(
-      "active",
-      Number(chip.dataset.floor) ===
-        floorNumber
-    );
-  });
-}
-
-/* =========================================================
-   플레이어 렌더링
-========================================================= */
-
-function renderPlayer() {
-  playerElement.style.left =
-    percent(player.x, "x");
-
-  playerElement.style.top =
-    percent(player.y, "y");
-
-  playerElement.style.width =
-    percent(PLAYER_SIZE, "x");
-
-  playerElement.style.height =
-    percent(PLAYER_SIZE, "y");
-}
-
-/* =========================================================
-   인벤토리
-========================================================= */
-
-function renderInventory(targetElement) {
-  targetElement.innerHTML = "";
-
-  const itemIds =
-    Object.keys(inventory);
-
-  if (itemIds.length === 0) {
-    targetElement.innerHTML = `
-      <p class="muted">
-        아직 획득한 아이템이 없습니다.
-      </p>
-    `;
-
-    return;
-  }
-
-  itemIds.forEach((itemId) => {
-    const itemDefinition =
-      ITEM_POOL[itemId];
-
-    if (!itemDefinition) {
-      return;
-    }
-
-    const chip =
-      document.createElement("div");
-
-    chip.className = "inv-chip";
-
-    chip.innerHTML = `
-      <span>
-        ${itemDefinition.icon}
-      </span>
-
-      <b>
-        ${itemDefinition.name}
-      </b>
-
-      <span class="inv-count">
-        x${inventory[itemId]}
-      </span>
-    `;
-
-    targetElement.appendChild(chip);
-  });
-}
-
-function collectItem(
-  itemInstance,
-  tokenElement
-) {
-  itemInstance.collected = true;
-
-  inventory[itemInstance.poolId] =
-    (inventory[itemInstance.poolId] || 0) + 1;
-
-  renderInventory(inventoryList);
-
-  if (tokenElement) {
-    tokenElement.classList.add(
-      "collected"
-    );
-
-    setTimeout(() => {
-      tokenElement.remove();
-    }, 200);
-  }
-}
-
-/* =========================================================
-   키보드 입력
-========================================================= */
-
-function keyToDirection(key) {
-  switch (key) {
-    case "ArrowUp":
-    case "w":
-    case "W":
-      return "up";
-
-    case "ArrowDown":
-    case "s":
-    case "S":
-      return "down";
-
-    case "ArrowLeft":
-    case "a":
-    case "A":
-      return "left";
-
-    case "ArrowRight":
-    case "d":
-    case "D":
-      return "right";
-
-    default:
-      return null;
-  }
-}
-
-document.addEventListener(
-  "keydown",
-  (event) => {
-    if (!gameRunning) {
-      return;
-    }
-
-    const direction =
-      keyToDirection(event.key);
-
-    if (!direction) {
-      return;
-    }
-
-    event.preventDefault();
-
-    activeDirections.add(direction);
-  }
-);
-
-document.addEventListener(
-  "keyup",
-  (event) => {
-    const direction =
-      keyToDirection(event.key);
-
-    if (!direction) {
-      return;
-    }
-
-    activeDirections.delete(direction);
-  }
-);
-
-/* =========================================================
-   모바일 이동 버튼
-========================================================= */
-
-touchButtons.forEach((button) => {
-  const direction =
-    button.dataset.dir;
-
-  const press = (event) => {
-    event.preventDefault();
-
-    if (gameRunning) {
-      activeDirections.add(direction);
-    }
+const socket=io();
+const $=id=>document.getElementById(id);
+const screens={home:$("homeScreen"),lobby:$("lobbyScreen"),game:$("gameScreen")};
+let currentRoom=null,myId=null,toastTimer=null;
+function showScreen(n){Object.entries(screens).forEach(([k,v])=>v.classList.toggle("active",k===n))}
+function toast(m){$("toast").textContent=m;$("toast").classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>$("toast").classList.remove("show"),2200)}
+function nickname(){const v=$("nickname").value.trim();if(v)localStorage.setItem("nick",v);return v}
+$("nickname").value=localStorage.getItem("nick")||"";
+
+function joinResult(r){if(!r?.ok)return toast(r?.message||"실패");currentRoom=r.room;myId=r.myId;renderLobby();showScreen("lobby");$("createDialog").close()}
+function renderRooms(rooms){$("roomList").innerHTML="";if(!rooms.length){$("roomList").innerHTML="<p>공개방이 없습니다.</p>";return}
+ rooms.forEach(r=>{const d=document.createElement("div");d.className="room-card";d.innerHTML=`<span>${r.name} (${r.playerCount}/${r.maxPlayers})</span>`;const b=document.createElement("button");b.textContent="참가";b.onclick=()=>socket.emit("join-room",{nickname:nickname(),code:r.code},joinResult);d.append(b);$("roomList").append(d)})}
+function renderLobby(){if(!currentRoom)return;$("lobbyName").textContent=currentRoom.name;$("copyCodeButton").textContent=currentRoom.code;$("playerList").innerHTML="";
+ currentRoom.players.forEach(p=>{const d=document.createElement("div");d.className="player-card";d.innerHTML=`<span><i style="display:inline-block;width:14px;height:14px;background:${p.color};margin-right:8px"></i>${p.nickname}${p.id===currentRoom.hostId?" (방장)":""}</span><b>${p.ready?"준비":"대기"}</b>`;$("playerList").append(d)});
+ const host=myId===currentRoom.hostId;$("readyButton").classList.toggle("hidden",host);$("startButton").classList.toggle("hidden",!host)}
+$("openCreateButton").onclick=()=>nickname()?$("createDialog").showModal():toast("닉네임 입력");
+$("closeCreateButton").onclick=()=>$("createDialog").close();
+$("createForm").onsubmit=e=>{e.preventDefault();socket.emit("create-room",{nickname:nickname(),roomName:$("roomName").value,maxPlayers:$("maxPlayers").value,private:$("privateRoom").checked},joinResult)};
+$("joinCodeButton").onclick=()=>socket.emit("join-room",{nickname:nickname(),code:$("roomCodeInput").value.toUpperCase()},joinResult);
+$("quickJoinButton").onclick=()=>socket.emit("quick-join",{nickname:nickname()},joinResult);
+$("refreshButton").onclick=()=>socket.emit("get-room-list");
+$("readyButton").onclick=()=>socket.emit("toggle-ready",r=>{if(!r.ok)toast(r.message)});
+$("startButton").onclick=()=>socket.emit("start-game",r=>{if(!r.ok)toast(r.message)});
+$("leaveButton").onclick=()=>socket.emit("leave-room",()=>location.reload());
+$("copyCodeButton").onclick=()=>navigator.clipboard?.writeText(currentRoom.code);
+socket.on("connect",()=>{$("connectionDot").classList.add("online");$("connectionText").textContent="연결됨"});
+socket.on("room-list",renderRooms);socket.on("room-updated",r=>{currentRoom=r;renderLobby()});
+
+/* GAME */
+const canvas=$("gameCanvas"),ctx=canvas.getContext("2d");
+const WORLD_W=2400,WORLD_H=1600,TILE=40,PLAYER=30,SPEED=230,VISION=330;
+let players={},items=[],me={x:1200,y:800,color:"#fff",inventory:[]},keys=new Set(),running=false,last=0,endsAt=0,lastSend=0;
+
+/* 0=floor, 1=wall. Original independent house layout: living room, kitchen,
+   dining room, garage, study, hallway, two bedrooms, bathrooms and attic zone. */
+const COLS=WORLD_W/TILE,ROWS=WORLD_H/TILE;
+const grid=Array.from({length:ROWS},()=>Array(COLS).fill(0));
+
+function seededRandom(seed){
+  let value=(Number(seed)||1)>>>0;
+  return function(){
+    value=(value*1664525+1013904223)>>>0;
+    return value/4294967296;
   };
+}
 
-  const release = () => {
-    activeDirections.delete(direction);
-  };
+function clearMap(){
+  for(let r=0;r<ROWS;r++) grid[r].fill(0);
+}
 
-  button.addEventListener(
-    "pointerdown",
-    press
-  );
+function wallRect(x,y,w,h){
+  for(let r=y;r<y+h;r++){
+    for(let c=x;c<x+w;c++){
+      if(r>=0&&r<ROWS&&c>=0&&c<COLS) grid[r][c]=1;
+    }
+  }
+}
 
-  button.addEventListener(
-    "pointerup",
-    release
-  );
+function door(x,y,w=1,h=1){
+  for(let r=y;r<y+h;r++){
+    for(let c=x;c<x+w;c++){
+      if(grid[r]) grid[r][c]=0;
+    }
+  }
+}
 
-  button.addEventListener(
-    "pointerleave",
-    release
-  );
+function furnitureRect(x,y,w,h){
+  wallRect(x,y,w,h);
+}
 
-  button.addEventListener(
-    "pointercancel",
-    release
-  );
+/*
+  매 게임마다 같은 방 안의 모든 플레이어가 같은 seed를 받습니다.
+  집의 외곽과 주요 방 위치는 유지하되 아래 요소가 무작위로 변합니다.
+
+  - 방 사이 문 위치
+  - 가구 위치와 방향
+  - 일부 방의 내부 칸막이
+  - 중앙 복도의 장애물
+  - 좌우 방의 세부 배치
+
+  통로가 완전히 막히지 않도록 방 출입구와 중앙 복도는 항상 남겨 둡니다.
+*/
+function buildMap(seed=1){
+  clearMap();
+  const random=seededRandom(seed);
+  const pick=list=>list[Math.floor(random()*list.length)];
+
+  // 외벽
+  wallRect(0,0,COLS,1);
+  wallRect(0,ROWS-1,COLS,1);
+  wallRect(0,0,1,ROWS);
+  wallRect(COLS-1,0,1,ROWS);
+
+  // 큰 주택의 기본 방 구조
+  wallRect(2,3,25,1); wallRect(2,3,1,14); wallRect(26,3,1,14); wallRect(2,16,25,1);
+  wallRect(27,3,14,1); wallRect(40,3,1,14); wallRect(27,16,14,1);
+  wallRect(41,3,16,1); wallRect(56,3,1,14); wallRect(41,16,16,1);
+  wallRect(2,17,18,1); wallRect(2,17,1,18); wallRect(19,17,1,18); wallRect(2,34,18,1);
+  wallRect(20,17,21,1); wallRect(40,17,1,18); wallRect(20,34,21,1);
+  wallRect(41,17,16,1); wallRect(56,17,1,18); wallRect(41,34,16,1);
+
+  // 위쪽 방 칸막이는 게임마다 조금 달라짐
+  const upperDividers=[
+    [8,15,33,48],
+    [9,16,32,47],
+    [7,14,34,49]
+  ];
+  const dividers=pick(upperDividers);
+  wallRect(dividers[0],3,1,13);
+  wallRect(dividers[1],3,1,13);
+  wallRect(dividers[2],3,1,13);
+  wallRect(dividers[3],3,1,13);
+
+  // 주요 출입문: 후보 위치 중 무작위
+  door(pick([4,5,6]),16,2);
+  door(pick([21,22,23]),16,2);
+  door(pick([34,35,36]),16,2);
+  door(pick([49,50,51]),16,2);
+  door(19,pick([22,24,27]),1,3);
+  door(40,pick([22,24,27]),1,3);
+
+  // 위쪽 내부 출입문
+  door(dividers[0],pick([7,9,11]),1,2);
+  door(dividers[1],pick([8,10,12]),1,2);
+  door(dividers[2],pick([7,10,12]),1,2);
+  door(dividers[3],pick([8,10,12]),1,2);
+
+  // 가구 후보군. 각 방마다 한 배치를 골라 생성
+  const roomFurniture=[
+    [
+      [[4,6,4,2],[17,6,5,2],[28,7,3,4],[43,6,5,2]],
+      [[5,10,5,2],[18,5,3,4],[29,11,5,2],[45,7,3,4]],
+      [[4,7,3,5],[17,11,5,2],[29,5,5,2],[44,11,5,2]]
+    ],
+    [
+      [[5,21,5,2],[12,28,4,3],[25,21,7,2],[47,23,5,4]],
+      [[4,27,4,3],[11,21,6,2],[27,27,5,3],[47,20,6,2]],
+      [[5,22,3,5],[12,30,5,2],[24,22,4,4],[49,27,4,3]]
+    ]
+  ];
+
+  pick(roomFurniture[0]).forEach(f=>furnitureRect(...f));
+  pick(roomFurniture[1]).forEach(f=>furnitureRect(...f));
+
+  // 중앙 복도에는 작은 장애물이 0~2개 생성
+  const corridorOptions=[
+    [],
+    [[31,19,2,2]],
+    [[29,29,3,2]],
+    [[24,19,2,2],[35,30,2,2]]
+  ];
+  pick(corridorOptions).forEach(f=>furnitureRect(...f));
+
+  // 일부 방에 짧은 칸막이를 추가하되 출입구는 남김
+  if(random()<0.55){
+    wallRect(43,29,7,1);
+    door(pick([45,47,49]),29,1,1);
+  }
+  if(random()<0.55){
+    wallRect(4,26,7,1);
+    door(pick([6,8,10]),26,1,1);
+  }
+
+  // 시작 지점 주변과 주요 복도는 항상 비워 둠
+  const safeZones=[
+    [27,17,13,17],
+    [26,15,16,4],
+    [27,18,4,4]
+  ];
+  safeZones.forEach(([x,y,w,h])=>door(x,y,w,h));
+}
+buildMap(1);
+
+const ITEM_ICONS={beans:"🥫",water:"💧",soap:"🧼",tape:"🩹",trap:"🪤",spray:"🧯",medkit:"💊",battery:"🔋",toolbox:"🧰",backpack:"🎒",blueprint:"📘",flashlight:"🔦",mask:"😷",map:"🗺️",radio:"📻"};
+function resize(){canvas.width=innerWidth*devicePixelRatio;canvas.height=innerHeight*devicePixelRatio;ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0)}
+addEventListener("resize",resize);resize();
+function blocked(x,y){
+ const points=[[x,y],[x+PLAYER,y],[x,y+PLAYER],[x+PLAYER,y+PLAYER]];
+ return points.some(([px,py])=>grid[Math.floor(py/TILE)]?.[Math.floor(px/TILE)]===1)
+}
+addEventListener("keydown",e=>keys.add(e.key.toLowerCase()));addEventListener("keyup",e=>keys.delete(e.key.toLowerCase()));
+document.querySelectorAll("[data-dir]").forEach(b=>{const k={up:"w",down:"s",left:"a",right:"d"}[b.dataset.dir];b.onpointerdown=()=>keys.add(k);b.onpointerup=b.onpointerleave=()=>keys.delete(k)});
+
+function visibleCell(cx,cy,tx,ty){
+ let x0=cx,y0=cy,x1=tx,y1=ty,dx=Math.abs(x1-x0),sx=x0<x1?1:-1,dy=-Math.abs(y1-y0),sy=y0<y1?1:-1,err=dx+dy;
+ while(true){if(!(x0===cx&&y0===cy)&&grid[y0]?.[x0]===1)return x0===tx&&y0===ty;if(x0===x1&&y0===y1)return true;const e2=2*err;if(e2>=dy){err+=dy;x0+=sx}if(e2<=dx){err+=dx;y0+=sy}}
+}
+function draw(){
+ const vw=innerWidth,vh=innerHeight,cx=me.x+PLAYER/2,cy=me.y+PLAYER/2;
+ const camX=Math.max(0,Math.min(WORLD_W-vw,cx-vw/2)),camY=Math.max(0,Math.min(WORLD_H-vh,cy-vh/2));
+ ctx.clearRect(0,0,vw,vh);ctx.fillStyle="#161a14";ctx.fillRect(0,0,vw,vh);
+ const minC=Math.max(0,Math.floor(camX/TILE)-1),maxC=Math.min(COLS-1,Math.ceil((camX+vw)/TILE)+1);
+ const minR=Math.max(0,Math.floor(camY/TILE)-1),maxR=Math.min(ROWS-1,Math.ceil((camY+vh)/TILE)+1);
+ const pc=Math.floor(cx/TILE),pr=Math.floor(cy/TILE);
+ for(let r=minR;r<=maxR;r++)for(let c=minC;c<=maxC;c++){
+   const x=c*TILE-camX,y=r*TILE-camY,dist=Math.hypot((c+.5)*TILE-cx,(r+.5)*TILE-cy);
+   const vis=dist<VISION && visibleCell(pc,pr,c,r);
+   if(!vis){ctx.fillStyle="#020302";ctx.fillRect(x,y,TILE+1,TILE+1);continue}
+   if(grid[r][c]){ctx.fillStyle="#4a4438";ctx.fillRect(x,y,TILE,TILE);ctx.strokeStyle="#6a6253";ctx.strokeRect(x,y,TILE,TILE)}
+   else{ctx.fillStyle=(r+c)%2?"#262b22":"#23281f";ctx.fillRect(x,y,TILE,TILE)}
+ }
+ items.filter(i=>!i.taken).forEach(i=>{const c=Math.floor(i.x/TILE),r=Math.floor(i.y/TILE);if(Math.hypot(i.x-cx,i.y-cy)<VISION&&visibleCell(pc,pr,c,r)){ctx.font="25px sans-serif";ctx.fillText(ITEM_ICONS[i.type]||"?",i.x-camX,i.y-camY)}})
+ Object.values(players).forEach(p=>{if(p.id===myId)return;const c=Math.floor(p.x/TILE),r=Math.floor(p.y/TILE);if(Math.hypot(p.x-cx,p.y-cy)<VISION&&visibleCell(pc,pr,c,r)){ctx.fillStyle=p.color;ctx.fillRect(p.x-camX,p.y-camY,PLAYER,PLAYER);ctx.fillStyle="#fff";ctx.font="12px sans-serif";ctx.fillText(p.nickname,p.x-camX-4,p.y-camY-6)}})
+ /* local player always centered except world edges */
+ ctx.fillStyle=me.color;ctx.fillRect(me.x-camX,me.y-camY,PLAYER,PLAYER);ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.strokeRect(me.x-camX,me.y-camY,PLAYER,PLAYER);
+ /* darkness vignette */
+ const g=ctx.createRadialGradient(vw/2,vh/2,100,vw/2,vh/2,VISION);g.addColorStop(0,"rgba(0,0,0,0)");g.addColorStop(.72,"rgba(0,0,0,.2)");g.addColorStop(1,"rgba(0,0,0,.92)");ctx.fillStyle=g;ctx.fillRect(0,0,vw,vh);
+}
+function update(t){
+ if(!running)return;const dt=Math.min((t-last)/1000,.05)||0;last=t;
+ let dx=(keys.has("d")||keys.has("arrowright")?1:0)-(keys.has("a")||keys.has("arrowleft")?1:0),dy=(keys.has("s")||keys.has("arrowdown")?1:0)-(keys.has("w")||keys.has("arrowup")?1:0);
+ if(dx&&dy){dx*=.7071;dy*=.7071}
+ const nx=me.x+dx*SPEED*dt,ny=me.y+dy*SPEED*dt;if(!blocked(nx,me.y))me.x=nx;if(!blocked(me.x,ny))me.y=ny;
+ items.forEach(i=>{if(!i.taken&&Math.hypot((me.x+PLAYER/2)-i.x,(me.y+PLAYER/2)-i.y)<45)socket.emit("take-item",i.id)});
+ if(t-lastSend>60){socket.emit("player-move",{x:me.x,y:me.y});lastSend=t}
+ $("timer").textContent=Math.max(0,Math.ceil((endsAt-Date.now())/1000));
+ draw();requestAnimationFrame(update)
+}
+socket.on("game-started",data=>{
+ showScreen("game");
+ buildMap(data.mapSeed || 1);
+ players={};
+ data.players.forEach(p=>players[p.id]={...p});
+ me={...players[myId]};
+ items=data.items;
+ endsAt=data.endsAt;
+ let n=5;$("countdown").textContent=n;$("countdownOverlay").classList.remove("hidden");
+ const h=setInterval(()=>{n--;$("countdown").textContent=n>0?n:"GO";if(n<0){clearInterval(h);$("countdownOverlay").classList.add("hidden");running=true;last=performance.now();requestAnimationFrame(update)}},1000)
 });
-
-/* =========================================================
-   게임 루프
-========================================================= */
-
-function gameLoop(timestamp) {
-  if (!gameRunning) {
-    return;
-  }
-
-  if (!previousFrameTime) {
-    previousFrameTime = timestamp;
-  }
-
-  const deltaTime = Math.min(
-    (timestamp - previousFrameTime) / 1000,
-    0.05
-  );
-
-  previousFrameTime = timestamp;
-
-  let moveX =
-    (activeDirections.has("right") ? 1 : 0) -
-    (activeDirections.has("left") ? 1 : 0);
-
-  let moveY =
-    (activeDirections.has("down") ? 1 : 0) -
-    (activeDirections.has("up") ? 1 : 0);
-
-  if (moveX !== 0 && moveY !== 0) {
-    moveX *= 0.7071;
-    moveY *= 0.7071;
-  }
-
-  const floor =
-    FLOOR_DEFINITIONS[currentFloor];
-
-  const movementX =
-    moveX *
-    PLAYER_SPEED *
-    deltaTime;
-
-  const movementY =
-    moveY *
-    PLAYER_SPEED *
-    deltaTime;
-
-  let nextX =
-    player.x + movementX;
-
-  nextX = Math.max(
-    0,
-    Math.min(
-      STAGE_WIDTH - PLAYER_SIZE,
-      nextX
-    )
-  );
-
-  const horizontalBox = {
-    x: nextX,
-    y: player.y,
-    w: PLAYER_SIZE,
-    h: PLAYER_SIZE,
-  };
-
-  const blockedHorizontally =
-    floor.obstacles.some(
-      (obstacle) =>
-        isColliding(
-          horizontalBox,
-          obstacle
-        )
-    );
-
-  if (!blockedHorizontally) {
-    player.x = nextX;
-  }
-
-  let nextY =
-    player.y + movementY;
-
-  nextY = Math.max(
-    0,
-    Math.min(
-      STAGE_HEIGHT - PLAYER_SIZE,
-      nextY
-    )
-  );
-
-  const verticalBox = {
-    x: player.x,
-    y: nextY,
-    w: PLAYER_SIZE,
-    h: PLAYER_SIZE,
-  };
-
-  const blockedVertically =
-    floor.obstacles.some(
-      (obstacle) =>
-        isColliding(
-          verticalBox,
-          obstacle
-        )
-    );
-
-  if (!blockedVertically) {
-    player.y = nextY;
-  }
-
-  let playerBox = {
-    x: player.x,
-    y: player.y,
-    w: PLAYER_SIZE,
-    h: PLAYER_SIZE,
-  };
-
-  if (timestamp > stairCooldownUntil) {
-    const stair =
-      floor.stairs.find(
-        (candidate) =>
-          isColliding(
-            playerBox,
-            candidate
-          )
-      );
-
-    if (stair) {
-      currentFloor = stair.to;
-
-      player.x = stair.spawn.x;
-      player.y = stair.spawn.y;
-
-      stairCooldownUntil =
-        timestamp + STAIR_COOLDOWN;
-
-      renderFloor(currentFloor);
-
-      playerBox = {
-        x: player.x,
-        y: player.y,
-        w: PLAYER_SIZE,
-        h: PLAYER_SIZE,
-      };
-    }
-  }
-
-  const currentItems =
-    floorItems[currentFloor];
-
-  currentItems.forEach(
-    (itemInstance) => {
-      if (itemInstance.collected) {
-        return;
-      }
-
-      if (
-        isColliding(
-          playerBox,
-          itemInstance
-        )
-      ) {
-        const tokenElement =
-          floorStage.querySelector(
-            `.item-token[data-instance-id="${itemInstance.instanceId}"]`
-          );
-
-        collectItem(
-          itemInstance,
-          tokenElement
-        );
-      }
-    }
-  );
-
-  if (
-    currentFloor === 1 &&
-    FLOOR_DEFINITIONS[1].bunker &&
-    isColliding(
-      playerBox,
-      FLOOR_DEFINITIONS[1].bunker
-    )
-  ) {
-    finishGame(true);
-    return;
-  }
-
-  renderPlayer();
-
-  animationHandle =
-    requestAnimationFrame(gameLoop);
-}
-
-/* =========================================================
-   게임 제한 시간
-========================================================= */
-
-function updateTimer() {
-  remainingSeconds -= 1;
-
-  farmingTimer.textContent =
-    Math.max(remainingSeconds, 0);
-
-  if (remainingSeconds <= 10) {
-    farmingTimer.classList.add(
-      "danger-tick"
-    );
-  }
-
-  if (remainingSeconds <= 0) {
-    finishGame(false);
-  }
-}
-
-/* =========================================================
-   아이템 수집 시작
-========================================================= */
-
-function startCollectGame() {
-  gameRunning = true;
-
-  currentFloor = 1;
-
-  player = {
-    x: 430,
-    y: 250,
-  };
-
-  inventory = {};
-
-  remainingSeconds =
-    TOTAL_SECONDS;
-
-  activeDirections.clear();
-
-  previousFrameTime = 0;
-  stairCooldownUntil = 0;
-
-  buildFloorItems();
-
-  preCountdownPanel.classList.add(
-    "hidden"
-  );
-
-  resultPanel.classList.add(
-    "hidden"
-  );
-
-  resultPanel.classList.remove(
-    "fail"
-  );
-
-  farmingPanel.classList.remove(
-    "hidden"
-  );
-
-  farmingTimer.classList.remove(
-    "danger-tick"
-  );
-
-  farmingTimer.textContent =
-    remainingSeconds;
-
-  renderFloor(1);
-  renderPlayer();
-  renderInventory(inventoryList);
-
-  if (timerHandle) {
-    clearInterval(timerHandle);
-  }
-
-  timerHandle = setInterval(
-    updateTimer,
-    1000
-  );
-
-  if (animationHandle) {
-    cancelAnimationFrame(
-      animationHandle
-    );
-  }
-
-  animationHandle =
-    requestAnimationFrame(gameLoop);
-}
-
-/* =========================================================
-   게임 중지 및 결과
-========================================================= */
-
-function stopCollectGame() {
-  gameRunning = false;
-
-  activeDirections.clear();
-
-  if (timerHandle) {
-    clearInterval(timerHandle);
-    timerHandle = null;
-  }
-
-  if (animationHandle) {
-    cancelAnimationFrame(
-      animationHandle
-    );
-
-    animationHandle = null;
-  }
-}
-
-function finishGame(success) {
-  if (!gameRunning) {
-    return;
-  }
-
-  stopCollectGame();
-
-  farmingPanel.classList.add(
-    "hidden"
-  );
-
-  resultPanel.classList.remove(
-    "hidden"
-  );
-
-  resultPanel.classList.toggle(
-    "fail",
-    !success
-  );
-
-  if (success) {
-    resultTitle.textContent =
-      "☢ 대피 성공";
-
-    resultHeadline.textContent =
-      "방공호 안으로 무사히 들어갔습니다.";
-
-    resultSub.textContent =
-      `남은 시간 ${Math.max(
-        remainingSeconds,
-        0
-      )}초를 남기고 대피했습니다.`;
-  } else {
-    resultTitle.textContent =
-      "☢ 피폭 경보";
-
-    resultHeadline.textContent =
-      "시간 안에 대피하지 못했습니다.";
-
-    resultSub.textContent =
-      "핵폭발에 휘말렸습니다. 다시 도전하세요.";
-  }
-
-  renderInventory(resultInventory);
-
-  socket.emit(
-    "farmingDone",
-    {
-      success,
-
-      inventory,
-
-      remainingSeconds:
-        Math.max(
-          remainingSeconds,
-          0
-        ),
-    }
-  );
-}
-
-/* =========================================================
-   결과 화면에서 처음으로
-========================================================= */
-
-returnHomeButton.addEventListener(
-  "click",
-  () => {
-    location.reload();
-  }
-);
-
-/* =========================================================
-   시작할 때 저장된 닉네임 적용
-========================================================= */
-
-nicknameInput.value =
-  localStorage.getItem(
-    "afterglow-nickname"
-  ) || "";
+socket.on("player-moved",d=>{if(players[d.id]){players[d.id].x=d.x;players[d.id].y=d.y}});
+socket.on("item-taken",d=>{const i=items.find(x=>x.id===d.itemId);if(i)i.taken=true;if(d.playerId===myId){me.inventory.push(d.type);$("inventory").textContent="가방: "+me.inventory.map(x=>ITEM_ICONS[x]).join(" ")}});
