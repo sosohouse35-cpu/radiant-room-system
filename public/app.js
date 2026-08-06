@@ -1,12 +1,12 @@
 "use strict";
 
 const socket = io();
-const byId = id => document.getElementById(id);
+const $ = id => document.getElementById(id);
 
 const screens = {
-  home: byId("homeScreen"),
-  lobby: byId("lobbyScreen"),
-  game: byId("gameScreen")
+  home: $("homeScreen"),
+  lobby: $("lobbyScreen"),
+  game: $("gameScreen")
 };
 
 let currentRoom = null;
@@ -14,20 +14,24 @@ let myId = null;
 let toastTimer = null;
 
 function showScreen(name) {
-  Object.entries(screens).forEach(([key, element]) => {
-    element.classList.toggle("active", key === name);
+  Object.entries(screens).forEach(([key, screen]) => {
+    screen.classList.toggle("active", key === name);
   });
 }
 
-function showToast(message) {
-  byId("toast").textContent = message;
-  byId("toast").classList.add("show");
+function toast(message) {
+  $("toast").textContent = message;
+  $("toast").classList.add("show");
+
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => byId("toast").classList.remove("show"), 2200);
+
+  toastTimer = setTimeout(() => {
+    $("toast").classList.remove("show");
+  }, 2200);
 }
 
 function nickname() {
-  const value = byId("nickname").value.trim();
+  const value = $("nickname").value.trim();
 
   if (value) {
     localStorage.setItem("afterglow-nickname", value);
@@ -36,12 +40,12 @@ function nickname() {
   return value;
 }
 
-byId("nickname").value =
+$("nickname").value =
   localStorage.getItem("afterglow-nickname") || "";
 
 function handleJoin(response) {
   if (!response?.ok) {
-    showToast(response?.message || "요청을 처리하지 못했습니다.");
+    toast(response?.message || "요청 실패");
     return;
   }
 
@@ -51,17 +55,16 @@ function handleJoin(response) {
   renderLobby();
   showScreen("lobby");
 
-  if (byId("createDialog").open) {
-    byId("createDialog").close();
+  if ($("createDialog").open) {
+    $("createDialog").close();
   }
 }
 
 function renderRooms(rooms) {
-  const list = byId("roomList");
-  list.innerHTML = "";
+  $("roomList").innerHTML = "";
 
   if (!rooms.length) {
-    list.innerHTML = "<p>공개방이 없습니다.</p>";
+    $("roomList").innerHTML = "<p>공개방이 없습니다.</p>";
     return;
   }
 
@@ -70,29 +73,34 @@ function renderRooms(rooms) {
     card.className = "room-card";
 
     const text = document.createElement("span");
-    text.textContent = `${room.name} (${room.playerCount}/${room.maxPlayers})`;
+    text.textContent =
+      `${room.name} (${room.playerCount}/${room.maxPlayers})`;
 
     const button = document.createElement("button");
     button.textContent = "참가";
+
     button.addEventListener("click", () => {
       socket.emit(
         "join-room",
-        { nickname: nickname(), code: room.code },
+        {
+          nickname: nickname(),
+          code: room.code
+        },
         handleJoin
       );
     });
 
     card.append(text, button);
-    list.appendChild(card);
+    $("roomList").appendChild(card);
   });
 }
 
 function renderLobby() {
   if (!currentRoom) return;
 
-  byId("lobbyName").textContent = currentRoom.name;
-  byId("copyCodeButton").textContent = currentRoom.code;
-  byId("playerList").innerHTML = "";
+  $("lobbyName").textContent = currentRoom.name;
+  $("copyCodeButton").textContent = currentRoom.code;
+  $("playerList").innerHTML = "";
 
   currentRoom.players.forEach(player => {
     const card = document.createElement("div");
@@ -113,55 +121,55 @@ function renderLobby() {
       <b>${player.ready ? "준비" : "대기"}</b>
     `;
 
-    byId("playerList").appendChild(card);
+    $("playerList").appendChild(card);
   });
 
   const isHost = myId === currentRoom.hostId;
 
-  byId("readyButton").classList.toggle("hidden", isHost);
-  byId("startButton").classList.toggle("hidden", !isHost);
+  $("readyButton").classList.toggle("hidden", isHost);
+  $("startButton").classList.toggle("hidden", !isHost);
 }
 
-byId("openCreateButton").addEventListener("click", () => {
+$("openCreateButton").addEventListener("click", () => {
   if (!nickname()) {
-    showToast("닉네임을 입력하세요.");
+    toast("닉네임을 입력하세요.");
     return;
   }
 
-  byId("createDialog").showModal();
+  $("createDialog").showModal();
 });
 
-byId("closeCreateButton").addEventListener("click", () => {
-  byId("createDialog").close();
+$("closeCreateButton").addEventListener("click", () => {
+  $("createDialog").close();
 });
 
-byId("createForm").addEventListener("submit", event => {
+$("createForm").addEventListener("submit", event => {
   event.preventDefault();
 
   socket.emit(
     "create-room",
     {
       nickname: nickname(),
-      roomName: byId("roomName").value,
-      maxPlayers: byId("maxPlayers").value,
-      private: byId("privateRoom").checked
+      roomName: $("roomName").value,
+      maxPlayers: $("maxPlayers").value,
+      private: $("privateRoom").checked
     },
     handleJoin
   );
 });
 
-byId("joinCodeButton").addEventListener("click", () => {
+$("joinCodeButton").addEventListener("click", () => {
   socket.emit(
     "join-room",
     {
       nickname: nickname(),
-      code: byId("roomCodeInput").value.toUpperCase()
+      code: $("roomCodeInput").value.toUpperCase()
     },
     handleJoin
   );
 });
 
-byId("quickJoinButton").addEventListener("click", () => {
+$("quickJoinButton").addEventListener("click", () => {
   socket.emit(
     "quick-join",
     { nickname: nickname() },
@@ -169,49 +177,47 @@ byId("quickJoinButton").addEventListener("click", () => {
   );
 });
 
-byId("refreshButton").addEventListener("click", () => {
+$("refreshButton").addEventListener("click", () => {
   socket.emit("get-room-list");
 });
 
-byId("readyButton").addEventListener("click", () => {
+$("readyButton").addEventListener("click", () => {
   socket.emit("toggle-ready", response => {
     if (!response?.ok) {
-      showToast(response?.message || "준비 상태를 바꾸지 못했습니다.");
+      toast(response?.message || "준비 변경 실패");
     }
   });
 });
 
-byId("startButton").addEventListener("click", () => {
+$("startButton").addEventListener("click", () => {
   socket.emit("start-game", response => {
     if (!response?.ok) {
-      showToast(response?.message || "게임을 시작하지 못했습니다.");
+      toast(response?.message || "게임 시작 실패");
     }
   });
 });
 
-byId("leaveButton").addEventListener("click", () => {
+$("leaveButton").addEventListener("click", () => {
   socket.emit("leave-room", () => location.reload());
 });
 
-byId("copyCodeButton").addEventListener("click", async () => {
-  if (!currentRoom) return;
-
+$("copyCodeButton").addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(currentRoom.code);
-    showToast("방 코드가 복사되었습니다.");
+    toast("방 코드 복사 완료");
   } catch {
-    showToast(`방 코드: ${currentRoom.code}`);
+    toast(`방 코드: ${currentRoom.code}`);
   }
 });
 
 socket.on("connect", () => {
-  byId("connectionDot").classList.add("online");
-  byId("connectionText").textContent = "연결됨";
+  $("connectionDot").classList.add("online");
+  $("connectionText").textContent = "연결됨";
 });
 
 socket.on("disconnect", () => {
-  byId("connectionDot").classList.remove("online");
-  byId("connectionText").textContent = "연결 끊김";
+  $("connectionDot").classList.remove("online");
+  $("connectionText").textContent = "연결 끊김";
 });
 
 socket.on("room-list", renderRooms);
@@ -222,25 +228,19 @@ socket.on("room-updated", room => {
 });
 
 /* =========================================================
-   게임
+   아이템 수집 게임
 ========================================================= */
 
-const canvas = byId("gameCanvas");
+const canvas = $("gameCanvas");
 const context = canvas.getContext("2d");
 
 const WORLD_WIDTH = 2400;
 const WORLD_HEIGHT = 1600;
-const TILE_SIZE = 40;
+const TILE = 40;
 const PLAYER_SIZE = 30;
-const PLAYER_SPEED = 230;
-
-const columns = WORLD_WIDTH / TILE_SIZE;
-const rows = WORLD_HEIGHT / TILE_SIZE;
-
-const grid = Array.from(
-  { length: rows },
-  () => Array(columns).fill(0)
-);
+const SPEED = 235;
+const COLS = WORLD_WIDTH / TILE;
+const ROWS = WORLD_HEIGHT / TILE;
 
 const ITEM_ICONS = {
   beans: "🥫",
@@ -251,36 +251,32 @@ const ITEM_ICONS = {
   spray: "🧯",
   medkit: "💊",
   battery: "🔋",
-  toolbox: "🧰",
-  backpack: "🎒",
-  blueprint: "📘",
   flashlight: "🔦",
   mask: "😷",
+  axe: "🪓",
+  backpack: "🎒",
+  blueprint: "📘",
+  toolbox: "🧰",
   map: "🗺️",
   radio: "📻"
 };
 
+let itemDefs = {};
+let handLimit = 4;
+let bunker = null;
+let grids = {};
+let furniture = {};
 let players = {};
 let items = [];
-let bunker = { x: 1080, y: 740, w: 240, h: 180 };
-let handLimit = 4;
-
-let me = {
-  x: bunker.x + 105,
-  y: bunker.y + 75,
-  color: "#ffffff",
-  hands: [],
-  stored: [],
-  alive: true
-};
-
-let pressedKeys = new Set();
-let gameRunning = false;
-let gameEnded = false;
-let lastFrameTime = 0;
-let gameEndsAt = 0;
-let lastPositionSend = 0;
-let depositCooldown = false;
+let me = {};
+let currentFloor = 1;
+let keys = new Set();
+let running = false;
+let ended = false;
+let lastFrame = 0;
+let endsAt = 0;
+let lastSend = 0;
+let nearItem = null;
 
 function resizeCanvas() {
   const ratio = window.devicePixelRatio || 1;
@@ -294,39 +290,26 @@ function resizeCanvas() {
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
-function seededRandom(seed) {
-  let value = (Number(seed) || 1) >>> 0;
-
-  return function random() {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
+function makeEmptyGrid() {
+  return Array.from(
+    { length: ROWS },
+    () => Array(COLS).fill(0)
+  );
 }
 
-function clearMap() {
-  for (let row = 0; row < rows; row += 1) {
-    grid[row].fill(0);
-  }
-}
-
-function wallRect(x, y, width, height) {
-  for (let row = y; row < y + height; row += 1) {
-    for (let column = x; column < x + width; column += 1) {
-      if (
-        row >= 0 &&
-        row < rows &&
-        column >= 0 &&
-        column < columns
-      ) {
+function wall(grid, x, y, w, h) {
+  for (let row = y; row < y + h; row += 1) {
+    for (let column = x; column < x + w; column += 1) {
+      if (grid[row]) {
         grid[row][column] = 1;
       }
     }
   }
 }
 
-function clearRect(x, y, width = 1, height = 1) {
-  for (let row = y; row < y + height; row += 1) {
-    for (let column = x; column < x + width; column += 1) {
+function opening(grid, x, y, w = 1, h = 1) {
+  for (let row = y; row < y + h; row += 1) {
+    for (let column = x; column < x + w; column += 1) {
       if (grid[row]) {
         grid[row][column] = 0;
       }
@@ -334,218 +317,377 @@ function clearRect(x, y, width = 1, height = 1) {
   }
 }
 
-function buildMap(seed = 1) {
-  clearMap();
-
-  const random = seededRandom(seed);
-  const pick = list => list[Math.floor(random() * list.length)];
-
-  wallRect(0, 0, columns, 1);
-  wallRect(0, rows - 1, columns, 1);
-  wallRect(0, 0, 1, rows);
-  wallRect(columns - 1, 0, 1, rows);
-
-  wallRect(2, 3, 25, 1);
-  wallRect(2, 3, 1, 14);
-  wallRect(26, 3, 1, 14);
-  wallRect(2, 16, 25, 1);
-
-  wallRect(27, 3, 14, 1);
-  wallRect(40, 3, 1, 14);
-  wallRect(27, 16, 14, 1);
-
-  wallRect(41, 3, 16, 1);
-  wallRect(56, 3, 1, 14);
-  wallRect(41, 16, 16, 1);
-
-  wallRect(2, 17, 18, 1);
-  wallRect(2, 17, 1, 18);
-  wallRect(19, 17, 1, 18);
-  wallRect(2, 34, 18, 1);
-
-  wallRect(20, 17, 21, 1);
-  wallRect(40, 17, 1, 18);
-  wallRect(20, 34, 21, 1);
-
-  wallRect(41, 17, 16, 1);
-  wallRect(56, 17, 1, 18);
-  wallRect(41, 34, 16, 1);
-
-  const dividerSets = [
-    [8, 15, 33, 48],
-    [9, 16, 32, 47],
-    [7, 14, 34, 49]
-  ];
-
-  const dividers = pick(dividerSets);
-
-  wallRect(dividers[0], 3, 1, 13);
-  wallRect(dividers[1], 3, 1, 13);
-  wallRect(dividers[2], 3, 1, 13);
-  wallRect(dividers[3], 3, 1, 13);
-
-  clearRect(pick([4, 5, 6]), 16, 2);
-  clearRect(pick([21, 22, 23]), 16, 2);
-  clearRect(pick([34, 35, 36]), 16, 2);
-  clearRect(pick([49, 50, 51]), 16, 2);
-
-  clearRect(19, pick([22, 24, 27]), 1, 3);
-  clearRect(40, pick([22, 24, 27]), 1, 3);
-
-  clearRect(dividers[0], pick([7, 9, 11]), 1, 2);
-  clearRect(dividers[1], pick([8, 10, 12]), 1, 2);
-  clearRect(dividers[2], pick([7, 10, 12]), 1, 2);
-  clearRect(dividers[3], pick([8, 10, 12]), 1, 2);
-
-  const furnitureLayouts = [
-    [
-      [5, 7, 4, 2],
-      [18, 6, 5, 2],
-      [29, 7, 3, 4],
-      [44, 7, 5, 2],
-      [5, 22, 5, 2],
-      [12, 28, 4, 3],
-      [25, 22, 7, 2],
-      [47, 24, 5, 4]
-    ],
-    [
-      [5, 10, 5, 2],
-      [18, 5, 3, 4],
-      [29, 11, 5, 2],
-      [45, 7, 3, 4],
-      [4, 27, 4, 3],
-      [11, 21, 6, 2],
-      [27, 27, 5, 3],
-      [47, 20, 6, 2]
-    ],
-    [
-      [4, 7, 3, 5],
-      [17, 11, 5, 2],
-      [29, 5, 5, 2],
-      [44, 11, 5, 2],
-      [5, 22, 3, 5],
-      [12, 30, 5, 2],
-      [24, 22, 4, 4],
-      [49, 27, 4, 3]
-    ]
-  ];
-
-  pick(furnitureLayouts).forEach(furniture => {
-    wallRect(...furniture);
+function addFurniture(floor, x, y, w, h, type, label) {
+  furniture[floor].push({
+    x: x * TILE,
+    y: y * TILE,
+    w: w * TILE,
+    h: h * TILE,
+    type,
+    label
   });
 
-  // 벙커 내부와 출입구는 항상 이동 가능하게 유지합니다.
-  clearRect(26, 17, 9, 7);
+  wall(grids[floor], x, y, w, h);
 }
 
-function playerBlocked(x, y) {
-  const corners = [
+function buildFloor1() {
+  const grid = makeEmptyGrid();
+  grids[1] = grid;
+  furniture[1] = [];
+
+  wall(grid, 0, 0, COLS, 1);
+  wall(grid, 0, ROWS - 1, COLS, 1);
+  wall(grid, 0, 0, 1, ROWS);
+  wall(grid, COLS - 1, 0, 1, ROWS);
+
+  // 주방
+  wall(grid, 2, 3, 20, 1);
+  wall(grid, 2, 3, 1, 13);
+  wall(grid, 21, 3, 1, 13);
+  wall(grid, 2, 15, 20, 1);
+
+  // 거실
+  wall(grid, 23, 3, 18, 1);
+  wall(grid, 23, 3, 1, 13);
+  wall(grid, 40, 3, 1, 13);
+  wall(grid, 23, 15, 18, 1);
+
+  // 욕실
+  wall(grid, 42, 3, 15, 1);
+  wall(grid, 42, 3, 1, 13);
+  wall(grid, 56, 3, 1, 13);
+  wall(grid, 42, 15, 15, 1);
+
+  // 차고
+  wall(grid, 2, 18, 20, 1);
+  wall(grid, 2, 18, 1, 16);
+  wall(grid, 21, 18, 1, 16);
+  wall(grid, 2, 33, 20, 1);
+
+  // 복도 + 벙커
+  wall(grid, 23, 18, 34, 1);
+  wall(grid, 23, 18, 1, 16);
+  wall(grid, 56, 18, 1, 16);
+  wall(grid, 23, 33, 34, 1);
+
+  opening(grid, 9, 15, 3);
+  opening(grid, 30, 15, 3);
+  opening(grid, 48, 15, 2);
+  opening(grid, 9, 18, 3);
+  opening(grid, 31, 18, 3);
+
+  addFurniture(1, 4, 5, 6, 2, "counter", "조리대");
+  addFurniture(1, 13, 5, 5, 2, "counter", "싱크대");
+  addFurniture(1, 5, 11, 4, 2, "table", "식탁");
+  addFurniture(1, 25, 6, 5, 3, "sofa", "소파");
+  addFurniture(1, 34, 5, 3, 2, "table", "탁자");
+  addFurniture(1, 4, 22, 6, 3, "car", "차량");
+  addFurniture(1, 13, 24, 4, 3, "shelf", "공구 선반");
+  addFurniture(1, 45, 6, 3, 2, "bath", "욕조");
+
+  // 벙커 내부 통로
+  opening(grid, 27, 19, 8, 6);
+}
+
+function buildFloor2() {
+  const grid = makeEmptyGrid();
+  grids[2] = grid;
+  furniture[2] = [];
+
+  wall(grid, 0, 0, COLS, 1);
+  wall(grid, 0, ROWS - 1, COLS, 1);
+  wall(grid, 0, 0, 1, ROWS);
+  wall(grid, COLS - 1, 0, 1, ROWS);
+
+  // 침실
+  wall(grid, 2, 3, 22, 1);
+  wall(grid, 2, 3, 1, 15);
+  wall(grid, 23, 3, 1, 15);
+  wall(grid, 2, 17, 22, 1);
+
+  // 서재
+  wall(grid, 25, 3, 18, 1);
+  wall(grid, 25, 3, 1, 15);
+  wall(grid, 42, 3, 1, 15);
+  wall(grid, 25, 17, 18, 1);
+
+  // 욕실
+  wall(grid, 44, 3, 13, 1);
+  wall(grid, 44, 3, 1, 15);
+  wall(grid, 56, 3, 1, 15);
+  wall(grid, 44, 17, 13, 1);
+
+  // 복도
+  wall(grid, 2, 20, 55, 1);
+  wall(grid, 2, 20, 1, 12);
+  wall(grid, 56, 20, 1, 12);
+  wall(grid, 2, 31, 55, 1);
+
+  opening(grid, 10, 17, 3);
+  opening(grid, 32, 17, 3);
+  opening(grid, 49, 17, 2);
+  opening(grid, 12, 20, 3);
+  opening(grid, 30, 20, 3);
+  opening(grid, 48, 20, 3);
+
+  addFurniture(2, 4, 6, 7, 4, "bed", "침대");
+  addFurniture(2, 14, 6, 5, 2, "desk", "책상");
+  addFurniture(2, 27, 6, 6, 2, "desk", "큰 책상");
+  addFurniture(2, 35, 10, 3, 4, "shelf", "책장");
+  addFurniture(2, 47, 6, 4, 3, "bath", "욕조");
+  addFurniture(2, 6, 24, 6, 2, "wardrobe", "옷장");
+}
+
+function buildFloor3() {
+  const grid = makeEmptyGrid();
+  grids[3] = grid;
+  furniture[3] = [];
+
+  wall(grid, 0, 0, COLS, 1);
+  wall(grid, 0, ROWS - 1, COLS, 1);
+  wall(grid, 0, 0, 1, ROWS);
+  wall(grid, COLS - 1, 0, 1, ROWS);
+
+  wall(grid, 3, 4, 54, 1);
+  wall(grid, 3, 4, 1, 27);
+  wall(grid, 56, 4, 1, 27);
+  wall(grid, 3, 30, 54, 1);
+
+  opening(grid, 28, 30, 4);
+
+  addFurniture(3, 6, 8, 5, 4, "crate", "상자");
+  addFurniture(3, 14, 8, 4, 3, "crate", "상자");
+  addFurniture(3, 25, 8, 6, 2, "table", "작업대");
+  addFurniture(3, 38, 8, 5, 4, "shelf", "낡은 선반");
+  addFurniture(3, 48, 9, 4, 3, "crate", "큰 상자");
+}
+
+function buildMap() {
+  buildFloor1();
+  buildFloor2();
+  buildFloor3();
+}
+
+function blocked(x, y, floor) {
+  const grid = grids[floor];
+
+  return [
     [x, y],
     [x + PLAYER_SIZE - 1, y],
     [x, y + PLAYER_SIZE - 1],
     [x + PLAYER_SIZE - 1, y + PLAYER_SIZE - 1]
-  ];
-
-  return corners.some(([pointX, pointY]) => {
-    const column = Math.floor(pointX / TILE_SIZE);
-    const row = Math.floor(pointY / TILE_SIZE);
-
-    return grid[row]?.[column] === 1;
+  ].some(([pointX, pointY]) => {
+    return (
+      grid[Math.floor(pointY / TILE)]?.[
+        Math.floor(pointX / TILE)
+      ] === 1
+    );
   });
 }
 
-function playerInsideBunker(player) {
-  const centerX = player.x + PLAYER_SIZE / 2;
-  const centerY = player.y + PLAYER_SIZE / 2;
-
-  return (
-    centerX >= bunker.x &&
-    centerX <= bunker.x + bunker.w &&
-    centerY >= bunker.y &&
-    centerY <= bunker.y + bunker.h
+function usedSlots() {
+  return (me.hands || []).reduce(
+    (sum, type) => sum + (itemDefs[type]?.slots || 1),
+    0
   );
 }
 
 function renderHands() {
   const slots = [...document.querySelectorAll(".hand-slot")];
 
-  slots.forEach((slot, index) => {
-    const type = me.hands[index];
-
-    slot.classList.toggle("filled", Boolean(type));
-    slot.textContent = type ? ITEM_ICONS[type] || "📦" : "✋";
-    slot.title = type || "빈손";
+  slots.forEach(slot => {
+    slot.textContent = "✋";
+    slot.classList.remove("filled");
   });
 
-  byId("storedItems").textContent =
-    me.stored.length > 0
-      ? `보관함: ${me.stored.map(type => ITEM_ICONS[type] || "📦").join(" ")}`
+  let cursor = 0;
+
+  (me.hands || []).forEach(type => {
+    const size = itemDefs[type]?.slots || 1;
+
+    for (
+      let index = 0;
+      index < size && cursor < slots.length;
+      index += 1, cursor += 1
+    ) {
+      slots[cursor].textContent =
+        index === 0
+          ? ITEM_ICONS[type] || "📦"
+          : "▪";
+
+      slots[cursor].classList.add("filled");
+    }
+  });
+
+  $("storedItems").textContent =
+    me.stored?.length
+      ? `보관함: ${me.stored
+          .map(type => ITEM_ICONS[type] || "📦")
+          .join(" ")}`
       : "보관함: 비어 있음";
 }
 
-function drawMap(cameraX, cameraY, viewportWidth, viewportHeight) {
-  const minColumn = Math.max(0, Math.floor(cameraX / TILE_SIZE) - 1);
-  const maxColumn = Math.min(
-    columns - 1,
-    Math.ceil((cameraX + viewportWidth) / TILE_SIZE) + 1
+function roomNameAt(x, y, floor) {
+  if (floor === 1) {
+    if (x < 880 && y < 640) return "주방";
+    if (x >= 920 && x < 1640 && y < 640) return "거실";
+    if (x >= 1680 && y < 640) return "욕실";
+    if (x < 880 && y >= 720) return "차고";
+    return "벙커/복도";
+  }
+
+  if (floor === 2) {
+    if (x < 960 && y < 720) return "침실";
+    if (x >= 1000 && x < 1720 && y < 720) return "서재";
+    if (x >= 1760 && y < 720) return "욕실";
+    return "2층 복도";
+  }
+
+  return "다락방";
+}
+
+function drawMap(cameraX, cameraY, width, height) {
+  const grid = grids[currentFloor];
+
+  const minColumn = Math.max(
+    0,
+    Math.floor(cameraX / TILE) - 1
   );
 
-  const minRow = Math.max(0, Math.floor(cameraY / TILE_SIZE) - 1);
+  const maxColumn = Math.min(
+    COLS - 1,
+    Math.ceil((cameraX + width) / TILE) + 1
+  );
+
+  const minRow = Math.max(
+    0,
+    Math.floor(cameraY / TILE) - 1
+  );
+
   const maxRow = Math.min(
-    rows - 1,
-    Math.ceil((cameraY + viewportHeight) / TILE_SIZE) + 1
+    ROWS - 1,
+    Math.ceil((cameraY + height) / TILE) + 1
   );
 
   for (let row = minRow; row <= maxRow; row += 1) {
-    for (let column = minColumn; column <= maxColumn; column += 1) {
-      const screenX = column * TILE_SIZE - cameraX;
-      const screenY = row * TILE_SIZE - cameraY;
+    for (
+      let column = minColumn;
+      column <= maxColumn;
+      column += 1
+    ) {
+      const screenX = column * TILE - cameraX;
+      const screenY = row * TILE - cameraY;
 
       if (grid[row][column] === 1) {
-        // 벽과 가구의 위치가 항상 보이도록 어둠/원형 시야를 사용하지 않습니다.
-        context.fillStyle = "#51493d";
-        context.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+        context.fillStyle = "#765f48";
+        context.fillRect(screenX, screenY, TILE, TILE);
 
-        context.strokeStyle = "#7a705f";
-        context.lineWidth = 2;
-        context.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+        context.strokeStyle = "#49372a";
+        context.strokeRect(screenX, screenY, TILE, TILE);
       } else {
         context.fillStyle =
-          (row + column) % 2 === 0
-            ? "#272c23"
-            : "#232820";
+          (row + column) % 2
+            ? "#eadbbc"
+            : "#e4d2ae";
 
-        context.fillRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
-
-        context.strokeStyle = "rgba(255,255,255,0.025)";
-        context.lineWidth = 1;
-        context.strokeRect(screenX, screenY, TILE_SIZE, TILE_SIZE);
+        context.fillRect(screenX, screenY, TILE, TILE);
       }
     }
   }
 }
 
+function drawFurniture(cameraX, cameraY) {
+  const colors = {
+    counter: "#bbb3a6",
+    table: "#9d7048",
+    sofa: "#7690a5",
+    car: "#58616a",
+    shelf: "#7c5a3c",
+    bath: "#cedce2",
+    bed: "#b99393",
+    desk: "#8a633f",
+    wardrobe: "#80654e",
+    crate: "#8a6845"
+  };
+
+  furniture[currentFloor].forEach(object => {
+    const screenX = object.x - cameraX;
+    const screenY = object.y - cameraY;
+
+    context.fillStyle =
+      colors[object.type] || "#8a6845";
+
+    context.fillRect(
+      screenX,
+      screenY,
+      object.w,
+      object.h
+    );
+
+    context.strokeStyle = "#49382a";
+
+    context.strokeRect(
+      screenX,
+      screenY,
+      object.w,
+      object.h
+    );
+
+    context.fillStyle = "#2b241d";
+    context.font = "12px Malgun Gothic";
+
+    context.fillText(
+      object.label,
+      screenX + 6,
+      screenY + 18
+    );
+  });
+}
+
 function drawBunker(cameraX, cameraY) {
+  if (currentFloor !== 1) return;
+
   const screenX = bunker.x - cameraX;
   const screenY = bunker.y - cameraY;
 
-  context.fillStyle = "rgba(214,240,85,0.13)";
-  context.fillRect(screenX, screenY, bunker.w, bunker.h);
+  context.fillStyle = "rgba(143,180,78,0.22)";
+  context.fillRect(
+    screenX,
+    screenY,
+    bunker.w,
+    bunker.h
+  );
 
-  context.strokeStyle = "#d6f055";
-  context.lineWidth = 4;
-  context.strokeRect(screenX, screenY, bunker.w, bunker.h);
+  context.strokeStyle = "#6c8d39";
+  context.lineWidth = 3;
 
-  context.fillStyle = "#d6f055";
+  context.strokeRect(
+    screenX,
+    screenY,
+    bunker.w,
+    bunker.h
+  );
+
+  context.fillStyle = "#425b22";
   context.font = "bold 16px Malgun Gothic";
-  context.fillText("벙커 아이템 보관소", screenX + 20, screenY + 30);
+
+  context.fillText(
+    "벙커 보관소 · F",
+    screenX + 20,
+    screenY + 28
+  );
 }
 
 function drawItems(cameraX, cameraY) {
   items
-    .filter(item => !item.taken)
+    .filter(
+      item =>
+        !item.taken &&
+        item.floor === currentFloor
+    )
     .forEach(item => {
-      context.font = "26px sans-serif";
+      context.font = "28px sans-serif";
+
       context.fillText(
         ITEM_ICONS[item.type] || "📦",
         item.x - cameraX,
@@ -556,255 +698,155 @@ function drawItems(cameraX, cameraY) {
 
 function drawPlayers(cameraX, cameraY) {
   Object.values(players).forEach(player => {
-    if (player.id === myId) return;
-    if (player.alive === false) return;
+    if (
+      player.id === myId ||
+      player.floor !== currentFloor
+    ) {
+      return;
+    }
 
     context.fillStyle = player.color;
+
     context.fillRect(
       player.x - cameraX,
       player.y - cameraY,
       PLAYER_SIZE,
       PLAYER_SIZE
     );
-
-    context.strokeStyle = "#ffffff";
-    context.lineWidth = 2;
-    context.strokeRect(
-      player.x - cameraX,
-      player.y - cameraY,
-      PLAYER_SIZE,
-      PLAYER_SIZE
-    );
-
-    context.fillStyle = "#ffffff";
-    context.font = "12px Malgun Gothic";
-    context.fillText(
-      player.nickname,
-      player.x - cameraX - 4,
-      player.y - cameraY - 7
-    );
   });
 }
 
-function drawLocalPlayer(viewportWidth, viewportHeight) {
-  // 내 캐릭터의 화면 좌표는 절대로 변경하지 않습니다.
-  // 월드 좌표가 변할 때 카메라만 반대 방향으로 이동합니다.
-  const screenX = viewportWidth / 2 - PLAYER_SIZE / 2;
-  const screenY = viewportHeight / 2 - PLAYER_SIZE / 2;
+function drawLocalPlayer(width, height) {
+  // 내 캐릭터는 화면 중앙에 고정
+  const screenX = width / 2 - PLAYER_SIZE / 2;
+  const screenY = height / 2 - PLAYER_SIZE / 2;
 
   context.fillStyle = me.color;
-  context.fillRect(screenX, screenY, PLAYER_SIZE, PLAYER_SIZE);
+
+  context.fillRect(
+    screenX,
+    screenY,
+    PLAYER_SIZE,
+    PLAYER_SIZE
+  );
 
   context.strokeStyle = "#ffffff";
-  context.lineWidth = 3;
-  context.strokeRect(screenX, screenY, PLAYER_SIZE, PLAYER_SIZE);
+  context.lineWidth = 2;
+
+  context.strokeRect(
+    screenX,
+    screenY,
+    PLAYER_SIZE,
+    PLAYER_SIZE
+  );
 }
 
 function drawGame() {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
+  const width = window.innerWidth;
+  const height = window.innerHeight;
 
-  // 카메라를 플레이어 월드 좌표에 맞추므로 캐릭터는 항상 화면 중앙입니다.
-  // 가장자리에서도 캐릭터가 움직여 보이지 않도록 카메라를 제한하지 않습니다.
   const cameraX =
-    me.x + PLAYER_SIZE / 2 - viewportWidth / 2;
+    me.x + PLAYER_SIZE / 2 - width / 2;
 
   const cameraY =
-    me.y + PLAYER_SIZE / 2 - viewportHeight / 2;
+    me.y + PLAYER_SIZE / 2 - height / 2;
 
-  context.clearRect(0, 0, viewportWidth, viewportHeight);
-  context.fillStyle = "#0d0f0c";
-  context.fillRect(0, 0, viewportWidth, viewportHeight);
+  context.fillStyle = "#d8c7a5";
+  context.fillRect(0, 0, width, height);
 
-  drawMap(cameraX, cameraY, viewportWidth, viewportHeight);
+  drawMap(cameraX, cameraY, width, height);
+  drawFurniture(cameraX, cameraY);
   drawBunker(cameraX, cameraY);
   drawItems(cameraX, cameraY);
   drawPlayers(cameraX, cameraY);
-  drawLocalPlayer(viewportWidth, viewportHeight);
+  drawLocalPlayer(width, height);
+
+  $("floorName").textContent =
+    `${currentFloor}층 · ${roomNameAt(
+      me.x,
+      me.y,
+      currentFloor
+    )}`;
 }
 
-function finishByTime() {
-  if (gameEnded) return;
+function findNearItem() {
+  nearItem = null;
+  let shortestDistance = Infinity;
 
-  gameEnded = true;
-  gameRunning = false;
+  items.forEach(item => {
+    if (
+      item.taken ||
+      item.floor !== currentFloor
+    ) {
+      return;
+    }
 
-  if (playerInsideBunker(me)) {
-    byId("bunkerMessage").textContent =
-      "폭발 순간 벙커 안에 있어 생존했습니다.";
-
-    showToast("생존했습니다.");
-  } else {
-    me.alive = false;
-    socket.emit("player-died");
-    byId("deathOverlay").classList.remove("hidden");
-  }
-}
-
-function updateGame(timestamp) {
-  if (!gameRunning) return;
-
-  const deltaTime = Math.min(
-    (timestamp - lastFrameTime) / 1000,
-    0.05
-  ) || 0;
-
-  lastFrameTime = timestamp;
-
-  let directionX =
-    (
-      pressedKeys.has("d") ||
-      pressedKeys.has("arrowright")
-        ? 1
-        : 0
-    ) -
-    (
-      pressedKeys.has("a") ||
-      pressedKeys.has("arrowleft")
-        ? 1
-        : 0
+    const distance = Math.hypot(
+      me.x + PLAYER_SIZE / 2 - item.x,
+      me.y + PLAYER_SIZE / 2 - item.y
     );
 
-  let directionY =
-    (
-      pressedKeys.has("s") ||
-      pressedKeys.has("arrowdown")
-        ? 1
-        : 0
-    ) -
-    (
-      pressedKeys.has("w") ||
-      pressedKeys.has("arrowup")
-        ? 1
-        : 0
-    );
-
-  if (directionX !== 0 && directionY !== 0) {
-    directionX *= 0.7071;
-    directionY *= 0.7071;
-  }
-
-  const nextX =
-    me.x + directionX * PLAYER_SPEED * deltaTime;
-
-  const nextY =
-    me.y + directionY * PLAYER_SPEED * deltaTime;
-
-  if (!playerBlocked(nextX, me.y)) {
-    me.x = nextX;
-  }
-
-  if (!playerBlocked(me.x, nextY)) {
-    me.y = nextY;
-  }
-
-  if (me.hands.length < handLimit) {
-    items.forEach(item => {
-      if (item.taken) return;
-
-      const distance = Math.hypot(
-        me.x + PLAYER_SIZE / 2 - item.x,
-        me.y + PLAYER_SIZE / 2 - item.y
-      );
-
-      if (distance < 45) {
-        socket.emit("take-item", item.id, response => {
-          if (!response?.ok && response?.message) {
-            showToast(response.message);
-          }
-        });
-      }
-    });
-  }
-
-  if (
-    playerInsideBunker(me) &&
-    me.hands.length > 0 &&
-    !depositCooldown
-  ) {
-    byId("bunkerMessage").textContent =
-      "벙커 안입니다. 오른쪽 아래의 ‘벙커에 보관’을 누르세요.";
-  } else if (!playerInsideBunker(me)) {
-    byId("bunkerMessage").textContent =
-      me.hands.length >= handLimit
-        ? "손 4칸이 찼습니다. 벙커로 돌아가 보관하세요."
-        : "아이템을 모은 뒤 벙커로 돌아오세요.";
-  }
-
-  if (timestamp - lastPositionSend > 60) {
-    socket.emit("player-move", {
-      x: me.x,
-      y: me.y
-    });
-
-    lastPositionSend = timestamp;
-  }
-
-  const remaining = Math.max(
-    0,
-    Math.ceil((gameEndsAt - Date.now()) / 1000)
-  );
-
-  byId("timer").textContent = remaining;
-
-  if (remaining <= 0) {
-    finishByTime();
-    drawGame();
-    return;
-  }
-
-  drawGame();
-  requestAnimationFrame(updateGame);
-}
-
-document.addEventListener("keydown", event => {
-  pressedKeys.add(event.key.toLowerCase());
-});
-
-document.addEventListener("keyup", event => {
-  pressedKeys.delete(event.key.toLowerCase());
-});
-
-document.querySelectorAll("[data-dir]").forEach(button => {
-  const key = {
-    up: "w",
-    down: "s",
-    left: "a",
-    right: "d"
-  }[button.dataset.dir];
-
-  button.addEventListener("pointerdown", event => {
-    event.preventDefault();
-    pressedKeys.add(key);
+    if (
+      distance < 75 &&
+      distance < shortestDistance
+    ) {
+      nearItem = item;
+      shortestDistance = distance;
+    }
   });
 
-  const release = () => {
-    pressedKeys.delete(key);
-  };
+  $("interactionPrompt").classList.toggle(
+    "hidden",
+    !nearItem
+  );
 
-  button.addEventListener("pointerup", release);
-  button.addEventListener("pointerleave", release);
-  button.addEventListener("pointercancel", release);
-});
+  if (nearItem) {
+    $("interactionPrompt").textContent =
+      `E · ${ITEM_ICONS[nearItem.type]} 줍기 ` +
+      `(${itemDefs[nearItem.type]?.slots || 1}칸)`;
+  }
+}
 
-byId("depositButton").addEventListener("click", () => {
-  if (!playerInsideBunker(me)) {
-    showToast("벙커 안에서만 보관할 수 있습니다.");
+function tryPickup() {
+  if (!nearItem) {
+    toast("근처에 아이템이 없습니다.");
     return;
   }
 
-  if (me.hands.length === 0) {
-    showToast("보관할 아이템이 없습니다.");
+  socket.emit(
+    "take-item",
+    nearItem.id,
+    response => {
+      if (!response?.ok) {
+        toast(response?.message || "줍기 실패");
+      }
+    }
+  );
+}
+
+function insideBunker() {
+  if (currentFloor !== 1) return false;
+
+  const centerX = me.x + PLAYER_SIZE / 2;
+  const centerY = me.y + PLAYER_SIZE / 2;
+
+  return (
+    centerX >= bunker.x &&
+    centerX <= bunker.x + bunker.w &&
+    centerY >= bunker.y &&
+    centerY <= bunker.y + bunker.h
+  );
+}
+
+function tryDeposit() {
+  if (!insideBunker()) {
+    toast("1층 벙커 안에서 F키를 누르세요.");
     return;
   }
-
-  depositCooldown = true;
 
   socket.emit("deposit-items", response => {
-    depositCooldown = false;
-
     if (!response?.ok) {
-      showToast(response?.message || "보관하지 못했습니다.");
+      toast(response?.message || "보관 실패");
       return;
     }
 
@@ -812,18 +854,175 @@ byId("depositButton").addEventListener("click", () => {
     me.stored = [...response.stored];
 
     renderHands();
-    showToast("아이템을 벙커에 보관했습니다.");
+    toast("벙커 보관 완료");
   });
+}
+
+function tryChangeFloor() {
+  const stair = {
+    x: 1480,
+    y: 740,
+    w: 140,
+    h: 140
+  };
+
+  const centerX = me.x + PLAYER_SIZE / 2;
+  const centerY = me.y + PLAYER_SIZE / 2;
+
+  const inside =
+    centerX >= stair.x &&
+    centerX <= stair.x + stair.w &&
+    centerY >= stair.y &&
+    centerY <= stair.y + stair.h;
+
+  if (!inside) {
+    toast("계단 위치에서 Q키를 누르세요.");
+    return;
+  }
+
+  if (currentFloor === 1) {
+    currentFloor = 2;
+  } else if (currentFloor === 2) {
+    currentFloor = 3;
+  } else {
+    currentFloor = 2;
+  }
+
+  me.floor = currentFloor;
+  me.x = 1500;
+  me.y = currentFloor === 3 ? 1080 : 820;
+
+  toast(`${currentFloor}층으로 이동`);
+}
+
+function finishRound() {
+  if (ended) return;
+
+  ended = true;
+  running = false;
+
+  $("resultText").textContent =
+    `벙커에 보관한 아이템: ${me.stored.length}개`;
+
+  $("resultOverlay").classList.remove("hidden");
+}
+
+function update(timestamp) {
+  if (!running) return;
+
+  const delta = Math.min(
+    (timestamp - lastFrame) / 1000,
+    0.05
+  ) || 0;
+
+  lastFrame = timestamp;
+
+  let moveX =
+    (
+      keys.has("d") ||
+      keys.has("arrowright")
+        ? 1
+        : 0
+    ) -
+    (
+      keys.has("a") ||
+      keys.has("arrowleft")
+        ? 1
+        : 0
+    );
+
+  let moveY =
+    (
+      keys.has("s") ||
+      keys.has("arrowdown")
+        ? 1
+        : 0
+    ) -
+    (
+      keys.has("w") ||
+      keys.has("arrowup")
+        ? 1
+        : 0
+    );
+
+  if (moveX && moveY) {
+    moveX *= 0.7071;
+    moveY *= 0.7071;
+  }
+
+  const nextX =
+    me.x + moveX * SPEED * delta;
+
+  const nextY =
+    me.y + moveY * SPEED * delta;
+
+  if (!blocked(nextX, me.y, currentFloor)) {
+    me.x = nextX;
+  }
+
+  if (!blocked(me.x, nextY, currentFloor)) {
+    me.y = nextY;
+  }
+
+  findNearItem();
+
+  if (timestamp - lastSend > 60) {
+    socket.emit("player-move", {
+      x: me.x,
+      y: me.y,
+      floor: currentFloor
+    });
+
+    lastSend = timestamp;
+  }
+
+  const remaining = Math.max(
+    0,
+    Math.ceil((endsAt - Date.now()) / 1000)
+  );
+
+  $("timer").textContent = remaining;
+
+  if (remaining <= 0) {
+    finishRound();
+    drawGame();
+    return;
+  }
+
+  drawGame();
+  requestAnimationFrame(update);
+}
+
+window.addEventListener("keydown", event => {
+  const key = event.key.toLowerCase();
+
+  keys.add(key);
+
+  if (key === "e") {
+    tryPickup();
+  }
+
+  if (key === "f") {
+    tryDeposit();
+  }
+
+  if (key === "q") {
+    tryChangeFloor();
+  }
 });
 
-byId("deathReturnButton").addEventListener("click", () => {
+window.addEventListener("keyup", event => {
+  keys.delete(event.key.toLowerCase());
+});
+
+$("returnButton").addEventListener("click", () => {
   location.reload();
 });
 
 socket.on("game-started", data => {
   showScreen("game");
 
-  buildMap(data.mapSeed || 1);
+  buildMap();
 
   players = {};
 
@@ -833,51 +1032,57 @@ socket.on("game-started", data => {
 
   me = {
     ...players[myId],
-    hands: [...(players[myId]?.hands || [])],
-    stored: [...(players[myId]?.stored || [])],
-    alive: true
+    hands: [],
+    stored: []
   };
 
-  bunker = data.bunker || bunker;
-  handLimit = data.handLimit || 4;
+  currentFloor = 1;
+  bunker = data.bunker;
+  handLimit = data.handLimit;
+  itemDefs = data.itemDefs;
   items = data.items;
-  gameEndsAt = data.endsAt;
-  gameEnded = false;
+  endsAt = data.endsAt;
+  ended = false;
 
   renderHands();
 
-  let countdown = 5;
-  byId("countdown").textContent = countdown;
-  byId("countdownOverlay").classList.remove("hidden");
-  byId("deathOverlay").classList.add("hidden");
+  let count = 5;
+
+  $("countdown").textContent = count;
+  $("countdownOverlay").classList.remove("hidden");
+  $("resultOverlay").classList.add("hidden");
 
   const countdownTimer = setInterval(() => {
-    countdown -= 1;
+    count -= 1;
 
-    byId("countdown").textContent =
-      countdown > 0
-        ? countdown
+    $("countdown").textContent =
+      count > 0
+        ? count
         : "GO";
 
-    if (countdown < 0) {
+    if (count < 0) {
       clearInterval(countdownTimer);
-      byId("countdownOverlay").classList.add("hidden");
-      gameRunning = true;
-      lastFrameTime = performance.now();
-      requestAnimationFrame(updateGame);
+
+      $("countdownOverlay").classList.add("hidden");
+
+      running = true;
+      lastFrame = performance.now();
+
+      requestAnimationFrame(update);
     }
   }, 1000);
 });
 
 socket.on("player-moved", data => {
-  if (!players[data.id]) return;
-
-  players[data.id].x = data.x;
-  players[data.id].y = data.y;
+  if (players[data.id]) {
+    Object.assign(players[data.id], data);
+  }
 });
 
 socket.on("item-taken", data => {
-  const item = items.find(candidate => candidate.id === data.itemId);
+  const item = items.find(
+    candidate => candidate.id === data.itemId
+  );
 
   if (item) {
     item.taken = true;
@@ -896,14 +1101,4 @@ socket.on("items-deposited", data => {
   me.stored = [...data.stored];
 
   renderHands();
-});
-
-socket.on("player-died", data => {
-  if (players[data.playerId]) {
-    players[data.playerId].alive = false;
-  }
-
-  if (data.playerId !== myId) {
-    showToast(`${data.nickname} 님이 사망했습니다.`);
-  }
 });
