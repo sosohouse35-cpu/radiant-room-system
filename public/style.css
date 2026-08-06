@@ -1,10 +1,18 @@
+/* =========================================================
+   기본 설정
+========================================================= */
+
 :root {
   color-scheme: dark;
+
   --bg: #0b0d0c;
-  --panel: rgba(23, 27, 24, 0.94);
+  --panel: rgba(23, 27, 24, 0.96);
+  --panel-light: #1b201b;
   --line: #3e493f;
+
   --text: #f1f0df;
   --muted: #a5aa9e;
+
   --acid: #d6f055;
   --orange: #f1a640;
   --danger: #e0604c;
@@ -14,99 +22,217 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  min-height: 100%;
+}
+
 body {
   min-height: 100vh;
   margin: 0;
-  background:
-    radial-gradient(circle at 75% 10%, rgba(137, 153, 60, 0.18), transparent 28rem),
-    linear-gradient(135deg, #151912 0%, #090b09 55%, #15130f 100%);
+
   color: var(--text);
-  font-family: "Malgun Gothic", "Noto Sans KR", sans-serif;
+
+  background:
+    radial-gradient(
+      circle at 75% 10%,
+      rgba(137, 153, 60, 0.18),
+      transparent 28rem
+    ),
+    linear-gradient(
+      135deg,
+      #151912 0%,
+      #090b09 55%,
+      #15130f 100%
+    );
+
+  font-family:
+    "Malgun Gothic",
+    "Apple SD Gothic Neo",
+    Arial,
+    sans-serif;
 }
+
+/* 배경 격자 */
 
 body::before {
   content: "";
+
   position: fixed;
   inset: 0;
+
   pointer-events: none;
+
   background:
-    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+    linear-gradient(
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px
+    );
+
   background-size: 34px 34px;
-  mask-image: linear-gradient(to bottom, black, transparent);
+
+  mask-image:
+    linear-gradient(
+      to bottom,
+      black,
+      transparent
+    );
 }
+
+/* 노이즈 효과 */
 
 .noise {
   position: fixed;
   inset: 0;
+
+  z-index: -1;
+
   pointer-events: none;
-  opacity: .08;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.4'/%3E%3C/svg%3E");
+
+  opacity: 0.07;
+
+  background-image:
+    url(
+      "data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.4'/%3E%3C/svg%3E"
+    );
 }
+
+/* =========================================================
+   전체 레이아웃
+========================================================= */
 
 .shell {
   width: min(1180px, calc(100% - 32px));
+
   margin: 0 auto;
+
   padding: 34px 0 60px;
 }
 
+/* =========================================================
+   상단 제목
+========================================================= */
+
 .brand {
   display: flex;
+
   align-items: flex-end;
   justify-content: space-between;
+
   gap: 24px;
+
   margin-bottom: 26px;
 }
 
-h1, h2, h3, p {
+h1,
+h2,
+h3,
+p {
   margin-top: 0;
 }
 
 h1 {
   margin-bottom: 0;
-  font-family: Impact, "Arial Black", sans-serif;
-  font-size: clamp(3.2rem, 8vw, 6.8rem);
-  line-height: .76;
-  letter-spacing: .02em;
+
   color: var(--acid);
-  text-shadow: 5px 5px 0 #292e1e;
+
+  font-family:
+    Impact,
+    "Arial Black",
+    sans-serif;
+
+  font-size:
+    clamp(
+      3.2rem,
+      8vw,
+      6.8rem
+    );
+
+  line-height: 0.76;
+
+  letter-spacing: 0.02em;
+
+  text-shadow:
+    5px 5px 0 #292e1e;
 }
 
 h2 {
   margin-bottom: 12px;
-  font-size: clamp(1.5rem, 3vw, 2.25rem);
+
+  font-size:
+    clamp(
+      1.5rem,
+      3vw,
+      2.25rem
+    );
 }
+
+h3 {
+  margin-bottom: 10px;
+}
+
+/* 작은 영어 제목 */
 
 .eyebrow,
 .section-label {
   margin-bottom: 8px;
+
   color: var(--orange);
-  font-size: .76rem;
+
+  font-size: 0.76rem;
   font-weight: 800;
-  letter-spacing: .18em;
+
+  letter-spacing: 0.18em;
 }
+
+/* 서버 연결 상태 */
 
 .status-line {
   display: flex;
+
   align-items: center;
+
   gap: 9px;
+
   padding: 9px 13px;
+
   border: 1px solid var(--line);
-  background: rgba(0,0,0,.35);
-  font-size: .82rem;
+
+  background:
+    rgba(
+      0,
+      0,
+      0,
+      0.35
+    );
+
+  font-size: 0.82rem;
 }
 
 .status-dot {
   width: 9px;
   height: 9px;
+
   border-radius: 50%;
+
   background: var(--orange);
-  box-shadow: 0 0 12px currentColor;
+
+  box-shadow:
+    0 0 12px currentColor;
 }
 
 .status-dot.online {
   background: var(--acid);
 }
+
+/* =========================================================
+   화면 전환
+========================================================= */
 
 .screen {
   display: none;
@@ -116,41 +242,72 @@ h2 {
   display: grid;
 }
 
-#homeScreen {
-  grid-template-columns: minmax(0, 1fr) minmax(330px, .9fr);
-  gap: 18px;
+/* hidden은 다른 display 설정보다 우선 */
+
+.hidden {
+  display: none !important;
 }
+
+/* =========================================================
+   공통 패널
+========================================================= */
 
 .panel {
   border: 1px solid var(--line);
+
   background: var(--panel);
-  box-shadow: 0 18px 50px rgba(0,0,0,.35);
+
+  box-shadow:
+    0 18px 50px
+    rgba(
+      0,
+      0,
+      0,
+      0.35
+    );
 }
 
 .intro-panel,
 .list-panel,
 .lobby-panel,
-.countdown-panel {
-  padding: clamp(22px, 4vw, 38px);
+.countdown-panel,
+.farming-panel,
+.result-panel {
+  padding:
+    clamp(
+      22px,
+      4vw,
+      38px
+    );
 }
 
 .warning {
   color: var(--acid);
+
   font-weight: 900;
-  letter-spacing: .08em;
+
+  letter-spacing: 0.08em;
 }
 
 .muted {
   color: var(--muted);
+
   line-height: 1.7;
 }
 
+/* =========================================================
+   입력창과 버튼
+========================================================= */
+
 label {
-  display: grid;
-  gap: 8px;
+  display: block;
+
   margin-top: 22px;
+  margin-bottom: 8px;
+
   color: #d6d7ce;
-  font-size: .88rem;
+
+  font-size: 0.88rem;
   font-weight: 700;
 }
 
@@ -158,61 +315,109 @@ input,
 select,
 button {
   min-height: 48px;
+
   border: 1px solid var(--line);
+
   border-radius: 0;
+
   color: var(--text);
+
   background: #101310;
+
   font: inherit;
 }
 
 input,
 select {
   width: 100%;
+
   padding: 0 14px;
+
   outline: none;
 }
 
 input:focus,
 select:focus {
   border-color: var(--acid);
-  box-shadow: 0 0 0 2px rgba(214, 240, 85, .15);
+
+  box-shadow:
+    0 0 0 2px
+    rgba(
+      214,
+      240,
+      85,
+      0.15
+    );
 }
 
 button {
   padding: 0 18px;
+
   cursor: pointer;
+
   font-weight: 900;
-  transition: transform .12s, background .12s, border-color .12s;
+
+  transition:
+    transform 0.12s,
+    background 0.12s,
+    border-color 0.12s;
 }
 
-button:hover {
-  transform: translateY(-2px);
+button:hover:not(:disabled) {
+  transform:
+    translateY(-2px);
+
   border-color: #778276;
+}
+
+button:active:not(:disabled) {
+  transform:
+    translateY(0);
 }
 
 button.primary {
   color: #11150c;
+
   border-color: var(--acid);
+
   background: var(--acid);
 }
 
 button.danger {
-  border-color: #713b33;
   color: #ffb9ae;
+
+  border-color: #713b33;
+
   background: #2d1714;
 }
 
 button:disabled {
   cursor: not-allowed;
-  opacity: .45;
+
+  opacity: 0.45;
+
   transform: none;
+}
+
+/* =========================================================
+   메인 화면
+========================================================= */
+
+#homeScreen {
+  grid-template-columns:
+    minmax(0, 1fr)
+    minmax(330px, 0.9fr);
+
+  gap: 18px;
 }
 
 .main-actions,
 .join-row,
 .lobby-actions {
   display: flex;
+
   gap: 10px;
+
   margin-top: 12px;
 }
 
@@ -222,96 +427,153 @@ button:disabled {
 
 .join-row input {
   flex: 1;
+
   text-transform: uppercase;
-  letter-spacing: .14em;
+
+  letter-spacing: 0.14em;
 }
 
 .panel-title,
 .lobby-header,
 .dialog-header {
   display: flex;
+
   align-items: center;
   justify-content: space-between;
+
   gap: 16px;
 }
 
 .icon-button {
   width: 48px;
+
   padding: 0;
+
   font-size: 1.4rem;
 }
 
+/* =========================================================
+   공개방 목록
+========================================================= */
+
 .room-list {
   display: grid;
+
   gap: 10px;
+
   max-height: 430px;
-  overflow: auto;
+
+  overflow-y: auto;
 }
 
 .room-card {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 16px;
+
+  grid-template-columns:
+    minmax(0, 1fr)
+    auto;
+
   align-items: center;
+
+  gap: 16px;
+
   padding: 15px;
+
   border: 1px solid #303832;
+
   background: #111411;
 }
 
 .room-card h3 {
   margin-bottom: 5px;
+
   font-size: 1rem;
+
+  overflow-wrap: anywhere;
 }
 
 .room-card p {
   margin-bottom: 0;
+
   color: var(--muted);
-  font-size: .78rem;
+
+  font-size: 0.78rem;
 }
 
 .empty {
   padding: 38px 16px;
+
   border: 1px dashed #384038;
+
   color: var(--muted);
+
   text-align: center;
+
+  line-height: 1.7;
 }
+
+/* =========================================================
+   로비
+========================================================= */
 
 .room-code-box {
   display: grid;
+
   gap: 5px;
+
   text-align: right;
 }
 
 .room-code-box span {
   color: var(--muted);
-  font-size: .72rem;
+
+  font-size: 0.72rem;
 }
 
 .room-code-box button {
   color: var(--acid);
-  letter-spacing: .18em;
+
+  letter-spacing: 0.18em;
 }
 
 .lobby-content {
   display: grid;
-  grid-template-columns: 1fr 310px;
+
+  grid-template-columns:
+    minmax(0, 1fr)
+    310px;
+
   gap: 22px;
+
   margin-top: 28px;
 }
 
+/* 플레이어 목록 */
+
 .player-list {
   display: grid;
+
   gap: 9px;
 }
 
 .player-card {
   display: grid;
-  grid-template-columns: 40px 1fr auto;
-  gap: 12px;
+
+  grid-template-columns:
+    40px
+    minmax(0, 1fr)
+    auto;
+
   align-items: center;
+
+  gap: 12px;
+
   min-height: 62px;
+
   padding: 9px 13px;
+
   border-left: 4px solid #545c53;
+
   background: #111411;
 }
 
@@ -321,41 +583,64 @@ button:disabled {
 
 .avatar {
   display: grid;
+
   place-items: center;
+
   width: 38px;
   height: 38px;
+
   background: #2c342d;
+
   color: var(--acid);
+
   font-weight: 900;
 }
 
 .host-badge,
 .ready-badge {
+  display: inline-block;
+
   padding: 5px 8px;
+
   border: 1px solid #4d574c;
+
   color: var(--muted);
-  font-size: .68rem;
+
+  font-size: 0.68rem;
   font-weight: 800;
 }
 
 .ready-badge.on {
   border-color: #71802a;
+
   color: var(--acid);
 }
 
+/* 임무 설명 */
+
 .mission-card {
   padding: 22px;
+
   border: 1px solid #4c4533;
+
   background: #1b1812;
+}
+
+.mission-card p {
+  color: var(--muted);
+
+  line-height: 1.6;
 }
 
 .mission-card li {
   margin-bottom: 10px;
+
   color: var(--muted);
 }
 
 .lobby-actions {
   justify-content: flex-end;
+
   margin-top: 26px;
 }
 
@@ -363,21 +648,576 @@ button:disabled {
   margin-right: auto;
 }
 
-.hidden {
-  display: none !important;
+/* =========================================================
+   시작 카운트다운
+========================================================= */
+
+.countdown-panel {
+  min-height: 460px;
+
+  display: grid;
+
+  place-items: center;
+  align-content: center;
+
+  text-align: center;
 }
 
-dialog {
-  width: min(500px, calc(100% - 30px));
+.countdown {
+  color: var(--acid);
+
+  font-family:
+    Impact,
+    sans-serif;
+
+  font-size:
+    clamp(
+      7rem,
+      22vw,
+      14rem
+    );
+
+  line-height: 1;
+
+  animation:
+    countdownPulse
+    0.85s
+    infinite
+    alternate;
+}
+
+@keyframes countdownPulse {
+  from {
+    opacity: 1;
+
+    transform:
+      scale(1);
+  }
+
+  to {
+    opacity: 0.65;
+
+    transform:
+      scale(0.93);
+  }
+}
+
+/* =========================================================
+   아이템 수집 게임
+========================================================= */
+
+.farming-panel {
+  display: grid;
+
+  gap: 16px;
+}
+
+.farming-header {
+  display: flex;
+
+  align-items: flex-start;
+  justify-content: space-between;
+
+  gap: 16px;
+
+  flex-wrap: wrap;
+}
+
+/* 제한 시간 */
+
+.farming-timer {
+  display: flex;
+
+  align-items: baseline;
+
+  gap: 6px;
+
+  padding: 8px 16px;
+
   border: 1px solid var(--line);
+
+  background: #101310;
+
+  white-space: nowrap;
+}
+
+#farmingTimer {
+  color: var(--acid);
+
+  font-family:
+    Impact,
+    sans-serif;
+
+  font-size: 2.3rem;
+
+  line-height: 1;
+}
+
+#farmingTimer.danger-tick {
+  color: var(--danger);
+
+  animation:
+    farmingPulse
+    0.5s
+    infinite
+    alternate;
+}
+
+@keyframes farmingPulse {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.4;
+  }
+}
+
+.timer-label {
+  color: var(--muted);
+
+  font-size: 0.74rem;
+}
+
+/* 층 표시 */
+
+.floor-indicator {
+  display: flex;
+
+  gap: 8px;
+
+  flex-wrap: wrap;
+}
+
+.floor-chip {
+  padding: 6px 12px;
+
+  border: 1px solid var(--line);
+
+  color: var(--muted);
+
+  font-size: 0.76rem;
+  font-weight: 800;
+
+  letter-spacing: 0.05em;
+}
+
+.floor-chip.active {
+  color: var(--acid);
+
+  border-color: var(--acid);
+
+  background:
+    rgba(
+      214,
+      240,
+      85,
+      0.08
+    );
+}
+
+/* 게임 맵 바깥 */
+
+.stage-wrap {
+  width: 100%;
+
+  border: 1px solid var(--line);
+
+  background: #0e120e;
+
+  overflow: hidden;
+}
+
+/* 게임 맵 */
+
+.floor-stage {
+  position: relative;
+
+  width: 100%;
+
+  aspect-ratio: 900 / 500;
+
+  overflow: hidden;
+
+  background:
+    linear-gradient(
+      rgba(
+        255,
+        255,
+        255,
+        0.03
+      )
+      1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(
+        255,
+        255,
+        255,
+        0.03
+      )
+      1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      160deg,
+      #191d16,
+      #0c0e0b
+    );
+
+  background-size:
+    30px 30px,
+    30px 30px,
+    100% 100%;
+
+  touch-action: none;
+
+  user-select: none;
+}
+
+/* 장애물 */
+
+.obstacle-block {
+  position: absolute;
+
+  border: 1px solid #4a5245;
+
+  background:
+    repeating-linear-gradient(
+      45deg,
+      #242a20,
+      #242a20 8px,
+      #20251d 8px,
+      #20251d 16px
+    );
+
+  box-shadow:
+    inset 0 0 12px
+    rgba(
+      0,
+      0,
+      0,
+      0.35
+    );
+}
+
+/* 아이템 */
+
+.item-token {
+  position: absolute;
+
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 2px;
+
+  font-size: 1.25rem;
+
+  line-height: 1;
+
+  pointer-events: none;
+
+  filter:
+    drop-shadow(
+      0 2px 4px
+      rgba(
+        0,
+        0,
+        0,
+        0.6
+      )
+    );
+
+  transition:
+    opacity 0.18s,
+    transform 0.18s;
+}
+
+.item-token .tok-icon {
+  font-size: 1.45rem;
+}
+
+.item-token .tok-name {
+  color: var(--acid);
+
+  font-size: 0.5rem;
+  font-weight: 800;
+
+  letter-spacing: 0.02em;
+
+  white-space: nowrap;
+}
+
+.item-token.collected {
+  opacity: 0;
+
+  transform:
+    scale(0.35);
+}
+
+/* 계단 */
+
+.stair-zone {
+  position: absolute;
+
+  display: grid;
+
+  place-items: center;
+
+  padding: 2px;
+
+  border: 1px dashed var(--orange);
+
+  color: var(--orange);
+
+  background:
+    rgba(
+      241,
+      166,
+      64,
+      0.08
+    );
+
+  font-size: 0.64rem;
+  font-weight: 800;
+
+  line-height: 1.2;
+
+  text-align: center;
+
+  pointer-events: none;
+}
+
+/* 벙커 입구 */
+
+.bunker-door {
+  position: absolute;
+
+  display: grid;
+
+  place-items: center;
+
+  padding: 2px;
+
+  border: 2px solid var(--acid);
+
+  color: var(--acid);
+
+  background:
+    rgba(
+      214,
+      240,
+      85,
+      0.12
+    );
+
+  box-shadow:
+    0 0 18px
+    rgba(
+      214,
+      240,
+      85,
+      0.28
+    );
+
+  font-size: 0.68rem;
+  font-weight: 900;
+
+  line-height: 1.2;
+
+  text-align: center;
+
+  pointer-events: none;
+}
+
+/* 플레이어 */
+
+.player {
+  position: absolute;
+
+  z-index: 5;
+
+  display: grid;
+
+  place-items: center;
+
+  font-size: 1.35rem;
+
+  filter:
+    drop-shadow(
+      0 3px 4px
+      rgba(
+        0,
+        0,
+        0,
+        0.7
+      )
+    );
+}
+
+.controls-hint {
+  margin: 0;
+
+  font-size: 0.82rem;
+}
+
+/* =========================================================
+   모바일 조작 버튼
+========================================================= */
+
+.touch-controls {
+  display: none;
+
+  flex-direction: column;
+
+  align-items: center;
+
+  gap: 8px;
+}
+
+.touch-row {
+  display: flex;
+
+  gap: 8px;
+}
+
+.touch-btn {
+  width: 52px;
+
+  min-height: 52px;
+
   padding: 0;
+
+  background: #101310;
+
+  font-size: 1.15rem;
+
+  touch-action: none;
+}
+
+.touch-btn:active {
+  color: #11150c;
+
+  border-color: var(--acid);
+
+  background: var(--acid);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .touch-controls {
+    display: flex;
+  }
+}
+
+/* =========================================================
+   인벤토리
+========================================================= */
+
+.inventory-bar {
+  padding-top: 14px;
+
+  border-top: 1px solid var(--line);
+}
+
+.inventory-list {
+  display: flex;
+
+  flex-wrap: wrap;
+
+  gap: 8px;
+}
+
+.inv-chip {
+  display: flex;
+
+  align-items: center;
+
+  gap: 6px;
+
+  padding: 6px 10px;
+
+  border: 1px solid var(--line);
+
+  background: #111411;
+
+  font-size: 0.8rem;
+}
+
+.inv-count {
+  color: var(--acid);
+
+  font-weight: 800;
+}
+
+/* =========================================================
+   게임 결과
+========================================================= */
+
+.result-panel {
+  min-height: 420px;
+
+  display: grid;
+
+  place-items: center;
+  align-content: center;
+
+  gap: 10px;
+
+  text-align: center;
+}
+
+.result-panel .inventory-list {
+  justify-content: center;
+
+  margin-top: 6px;
+}
+
+.result-panel.fail .warning,
+.result-panel.fail h2 {
+  color: var(--danger);
+}
+
+#returnHomeButton {
+  margin-top: 16px;
+}
+
+/* =========================================================
+   방 생성 창
+========================================================= */
+
+dialog {
+  width:
+    min(
+      500px,
+      calc(100% - 30px)
+    );
+
+  padding: 0;
+
+  border: 1px solid var(--line);
+
   color: var(--text);
+
   background: #181c18;
 }
 
 dialog::backdrop {
-  background: rgba(0,0,0,.78);
-  backdrop-filter: blur(5px);
+  background:
+    rgba(
+      0,
+      0,
+      0,
+      0.78
+    );
+
+  backdrop-filter:
+    blur(5px);
 }
 
 dialog form {
@@ -386,61 +1226,90 @@ dialog form {
 
 .check-label {
   display: flex;
+
   align-items: center;
+
   gap: 10px;
 }
 
 .check-label input {
   width: 18px;
+  height: 18px;
+
   min-height: 18px;
+
+  margin: 0;
 }
 
 .full {
   width: 100%;
+
   margin-top: 18px;
 }
 
 .error {
   min-height: 20px;
+
   margin: 14px 0 0;
+
   color: #ff8978;
-  font-size: .83rem;
+
+  font-size: 0.83rem;
 }
 
-.countdown-panel {
-  min-height: 460px;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  text-align: center;
-}
-
-.countdown {
-  font-family: Impact, sans-serif;
-  font-size: clamp(7rem, 22vw, 14rem);
-  line-height: 1;
-  color: var(--acid);
-}
+/* =========================================================
+   알림 메시지
+========================================================= */
 
 .toast {
   position: fixed;
+
   left: 50%;
   bottom: 28px;
-  z-index: 10;
-  transform: translate(-50%, 20px);
-  max-width: calc(100% - 30px);
+
+  z-index: 100;
+
+  max-width:
+    calc(
+      100% - 30px
+    );
+
   padding: 12px 18px;
+
   border: 1px solid #6b5841;
+
+  color: var(--text);
+
   background: #201b14;
+
   opacity: 0;
+
   pointer-events: none;
-  transition: .2s;
+
+  transform:
+    translate(
+      -50%,
+      20px
+    );
+
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
 }
 
 .toast.show {
-  transform: translate(-50%, 0);
   opacity: 1;
+
+  transform:
+    translate(
+      -50%,
+      0
+    );
 }
+
+/* =========================================================
+   태블릿
+========================================================= */
 
 @media (max-width: 820px) {
   #homeScreen,
@@ -450,6 +1319,7 @@ dialog form {
 
   .brand {
     align-items: flex-start;
+
     flex-direction: column;
   }
 
@@ -457,17 +1327,44 @@ dialog form {
   .join-row {
     flex-direction: column;
   }
+
+  .mission-card {
+    order: -1;
+  }
 }
+
+/* =========================================================
+   스마트폰
+========================================================= */
 
 @media (max-width: 540px) {
   .shell {
-    width: min(100% - 18px, 1180px);
+    width:
+      min(
+        100% - 18px,
+        1180px
+      );
+
     padding-top: 18px;
+  }
+
+  h1 {
+    font-size: 3.2rem;
+  }
+
+  .intro-panel,
+  .list-panel,
+  .lobby-panel,
+  .countdown-panel,
+  .farming-panel,
+  .result-panel {
+    padding: 18px;
   }
 
   .lobby-header,
   .lobby-actions {
     align-items: stretch;
+
     flex-direction: column;
   }
 
@@ -477,5 +1374,36 @@ dialog form {
 
   .lobby-actions .danger {
     margin-right: 0;
+  }
+
+  .player-card {
+    grid-template-columns:
+      36px
+      minmax(0, 1fr)
+      auto;
+
+    padding: 8px;
+  }
+
+  .avatar {
+    width: 34px;
+    height: 34px;
+  }
+
+  .farming-header {
+    flex-direction: column;
+  }
+
+  .floor-stage {
+    min-height: 280px;
+  }
+
+  .item-token .tok-name {
+    display: none;
+  }
+
+  .stair-zone,
+  .bunker-door {
+    font-size: 0.52rem;
   }
 }
