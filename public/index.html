@@ -4,148 +4,466 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Afterglow Shelter</title>
+
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
   <div class="noise"></div>
 
   <main class="shell">
+
+    <!-- 상단 제목 -->
     <header class="brand">
       <div>
-        <p class="eyebrow">MULTIPLAYER SURVIVAL PROTOTYPE</p>
+        <p class="eyebrow">MULTIPLAYER SURVIVAL GAME</p>
         <h1>AFTERGLOW<br />SHELTER</h1>
       </div>
+
       <div class="status-line">
-        <span class="status-dot"></span>
+        <span id="connectionDot" class="status-dot"></span>
         <span id="connectionText">서버 연결 중</span>
       </div>
     </header>
 
+    <!-- =========================
+         1. 메인 화면
+    ========================== -->
     <section id="homeScreen" class="screen active">
+
       <div class="panel intro-panel">
         <p class="warning">☢ 긴급 대피 방송</p>
+
         <h2>생존자를 모아 대피소로 이동하십시오.</h2>
+
         <p class="muted">
-          방을 만들거나 코드를 입력하여 다른 기기의 플레이어와 같은 로비에 참가할 수 있습니다.
+          방을 만들거나 방 코드를 입력하여 다른 기기의 플레이어와
+          함께 게임할 수 있습니다.
         </p>
 
-        <label>
+        <label for="nickname">
           생존자 이름
-          <input id="nickname" maxlength="14" placeholder="닉네임 입력" autocomplete="off" />
         </label>
 
+        <input
+          id="nickname"
+          type="text"
+          maxlength="14"
+          placeholder="닉네임 입력"
+          autocomplete="off"
+        />
+
         <div class="main-actions">
-          <button id="openCreateButton" class="primary">새 대피조 만들기</button>
-          <button id="quickJoinButton">빠른 참가</button>
+          <button id="openCreateButton" class="primary">
+            새 대피조 만들기
+          </button>
+
+          <button id="quickJoinButton">
+            빠른 참가
+          </button>
         </div>
 
         <div class="join-row">
-          <input id="roomCodeInput" maxlength="6" placeholder="6자리 방 코드" autocomplete="off" />
-          <button id="joinCodeButton">코드로 참가</button>
+          <input
+            id="roomCodeInput"
+            type="text"
+            maxlength="6"
+            placeholder="6자리 방 코드"
+            autocomplete="off"
+          />
+
+          <button id="joinCodeButton">
+            코드로 참가
+          </button>
         </div>
       </div>
 
+      <!-- 공개방 목록 -->
       <div class="panel list-panel">
         <div class="panel-title">
           <div>
             <p class="eyebrow">PUBLIC SHELTERS</p>
             <h2>공개 대피조</h2>
           </div>
-          <button id="refreshButton" class="icon-button" title="새로고침">↻</button>
+
+          <button
+            id="refreshButton"
+            class="icon-button"
+            type="button"
+            title="새로고침"
+          >
+            ↻
+          </button>
         </div>
-        <div id="roomList" class="room-list"></div>
+
+        <div id="roomList" class="room-list">
+          <div class="empty">
+            서버에서 방 목록을 불러오는 중입니다.
+          </div>
+        </div>
       </div>
+
     </section>
 
+    <!-- =========================
+         2. 방 대기실
+    ========================== -->
     <section id="lobbyScreen" class="screen">
+
       <div class="panel lobby-panel">
+
         <div class="lobby-header">
           <div>
             <p class="eyebrow">WAITING ROOM</p>
             <h2 id="lobbyName">대피조</h2>
           </div>
+
           <div class="room-code-box">
             <span>초대 코드</span>
-            <button id="copyCodeButton">------</button>
+
+            <button
+              id="copyCodeButton"
+              type="button"
+            >
+              ------
+            </button>
           </div>
         </div>
 
         <div class="lobby-content">
+
+          <!-- 플레이어 명단 -->
           <div>
-            <div class="section-label">생존자 명단</div>
+            <div class="section-label">
+              생존자 명단
+            </div>
+
             <div id="playerList" class="player-list"></div>
           </div>
 
+          <!-- 임무 설명 -->
           <aside class="mission-card">
             <p class="eyebrow">MISSION BRIEF</p>
+
             <h3>폭발까지 60초</h3>
+
             <p>
-              게임을 시작하면 실제 게임 화면으로 이동할 자리에 임시 카운트다운 화면이 표시됩니다.
+              게임 시작 후 집 안을 돌아다니며 생존 물품을 챙기고,
+              제한 시간 안에 1층 벙커로 들어가야 합니다.
             </p>
+
             <ul>
               <li>최소 2명 필요</li>
               <li>방장을 제외한 전원 준비</li>
               <li>최대 8명 참가</li>
+              <li>WASD 또는 방향키로 이동</li>
             </ul>
           </aside>
+
         </div>
 
         <div class="lobby-actions">
-          <button id="leaveButton" class="danger">방 나가기</button>
-          <button id="readyButton">준비</button>
-          <button id="startButton" class="primary hidden">게임 시작</button>
+          <button
+            id="leaveButton"
+            class="danger"
+            type="button"
+          >
+            방 나가기
+          </button>
+
+          <button
+            id="readyButton"
+            type="button"
+          >
+            준비
+          </button>
+
+          <button
+            id="startButton"
+            class="primary hidden"
+            type="button"
+          >
+            게임 시작
+          </button>
         </div>
+
       </div>
+
     </section>
 
+    <!-- =========================
+         3. 게임 화면
+    ========================== -->
     <section id="gameScreen" class="screen">
-      <div class="panel countdown-panel">
+
+      <!-- 5초 카운트다운 -->
+      <div
+        id="preCountdownPanel"
+        class="panel countdown-panel"
+      >
         <p class="warning">☢ 대피 명령 승인</p>
-        <h2>수집 단계 시작</h2>
-        <div id="countdown" class="countdown">5</div>
-        <p id="gameMessage" class="muted">게임 맵을 불러오는 중입니다.</p>
+
+        <h2>아이템 수집 단계 시작</h2>
+
+        <div id="countdown" class="countdown">
+          5
+        </div>
+
+        <p id="gameMessage" class="muted">
+          게임 맵을 준비하고 있습니다.
+        </p>
       </div>
+
+      <!-- 아이템 수집 화면 -->
+      <div
+        id="farmingPanel"
+        class="panel farming-panel hidden"
+      >
+
+        <div class="farming-header">
+          <div>
+            <p class="eyebrow">FARMING PHASE</p>
+
+            <h2>
+              집 안에서 아이템을 챙기고<br />
+              시간 안에 벙커로 들어가세요.
+            </h2>
+          </div>
+
+          <div class="farming-timer">
+            <span id="farmingTimer">60</span>
+            <span class="timer-label">초 남음</span>
+          </div>
+        </div>
+
+        <!-- 층 표시 -->
+        <div
+          id="floorIndicator"
+          class="floor-indicator"
+        >
+          <span
+            class="floor-chip"
+            data-floor="3"
+          >
+            3층 · 다락방
+          </span>
+
+          <span
+            class="floor-chip"
+            data-floor="2"
+          >
+            2층
+          </span>
+
+          <span
+            class="floor-chip active"
+            data-floor="1"
+          >
+            1층 · 거실
+          </span>
+        </div>
+
+        <!-- 게임 맵 -->
+        <div class="stage-wrap">
+          <div
+            id="floorStage"
+            class="floor-stage"
+          >
+            <div
+              id="player"
+              class="player"
+            >
+              🧍
+            </div>
+          </div>
+        </div>
+
+        <p class="muted controls-hint">
+          이동: <b>WASD</b> 또는 방향키 ·
+          주황색 점선은 계단 ·
+          초록색 문은 벙커 입구입니다.
+        </p>
+
+        <!-- 모바일 조작 버튼 -->
+        <div
+          id="touchControls"
+          class="touch-controls"
+        >
+          <button
+            type="button"
+            class="touch-btn"
+            data-dir="up"
+          >
+            ▲
+          </button>
+
+          <div class="touch-row">
+            <button
+              type="button"
+              class="touch-btn"
+              data-dir="left"
+            >
+              ◀
+            </button>
+
+            <button
+              type="button"
+              class="touch-btn"
+              data-dir="down"
+            >
+              ▼
+            </button>
+
+            <button
+              type="button"
+              class="touch-btn"
+              data-dir="right"
+            >
+              ▶
+            </button>
+          </div>
+        </div>
+
+        <!-- 획득 아이템 -->
+        <div class="inventory-bar">
+          <div class="section-label">
+            획득한 아이템
+          </div>
+
+          <div
+            id="inventoryList"
+            class="inventory-list"
+          >
+            <p class="muted">
+              아직 획득한 아이템이 없습니다.
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 게임 결과 -->
+      <div
+        id="resultPanel"
+        class="panel result-panel hidden"
+      >
+        <p
+          id="resultTitle"
+          class="warning"
+        >
+          ☢ 대피 성공
+        </p>
+
+        <h2 id="resultHeadline">
+          방공호 안으로 무사히 들어갔습니다.
+        </h2>
+
+        <div
+          id="resultInventory"
+          class="inventory-list"
+        ></div>
+
+        <p
+          id="resultSub"
+          class="muted"
+        >
+          최종 획득 아이템입니다.
+        </p>
+
+        <button
+          id="returnHomeButton"
+          class="primary"
+          type="button"
+        >
+          처음 화면으로
+        </button>
+      </div>
+
     </section>
+
   </main>
 
+  <!-- =========================
+       방 생성 창
+  ========================== -->
   <dialog id="createDialog">
-    <form method="dialog" id="createForm">
+
+    <form id="createForm">
+
       <div class="dialog-header">
         <div>
           <p class="eyebrow">CREATE SHELTER</p>
           <h2>새 대피조 만들기</h2>
         </div>
-        <button value="cancel" class="icon-button">×</button>
+
+        <button
+          id="closeCreateButton"
+          class="icon-button"
+          type="button"
+        >
+          ×
+        </button>
       </div>
 
-      <label>
+      <label for="roomName">
         방 제목
-        <input id="roomName" maxlength="24" placeholder="예: 7일 생존 도전" required />
       </label>
 
-      <label>
+      <input
+        id="roomName"
+        type="text"
+        maxlength="24"
+        placeholder="예: 7일 생존 도전"
+        required
+      />
+
+      <label for="maxPlayers">
         최대 인원
-        <select id="maxPlayers">
-          <option value="2">2명</option>
-          <option value="4" selected>4명</option>
-          <option value="6">6명</option>
-          <option value="8">8명</option>
-        </select>
       </label>
+
+      <select id="maxPlayers">
+        <option value="2">2명</option>
+        <option value="4" selected>4명</option>
+        <option value="6">6명</option>
+        <option value="8">8명</option>
+      </select>
 
       <label class="check-label">
-        <input id="privateRoom" type="checkbox" />
+        <input
+          id="privateRoom"
+          type="checkbox"
+        />
+
         비공개 방으로 만들기
       </label>
 
-      <p id="createError" class="error"></p>
-      <button id="createButton" type="submit" class="primary full">방 생성</button>
+      <p
+        id="createError"
+        class="error"
+      ></p>
+
+      <button
+        id="createButton"
+        class="primary full"
+        type="submit"
+      >
+        방 생성
+      </button>
+
     </form>
+
   </dialog>
 
-  <div id="toast" class="toast"></div>
+  <!-- 알림 메시지 -->
+  <div
+    id="toast"
+    class="toast"
+  ></div>
 
+  <!-- 실시간 서버 통신 -->
   <script src="/socket.io/socket.io.js"></script>
+
+  <!-- 모든 기능을 app.js 하나에서 실행 -->
   <script src="app.js"></script>
 </body>
 </html>
