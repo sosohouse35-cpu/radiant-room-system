@@ -183,7 +183,7 @@ io.on("connection", socket => {
     const room = rooms.get(socketRoom.get(socket.id));
     if (!room) return cb({ok:false,message:"방 정보가 없습니다."});
     if (room.hostId !== socket.id) return cb({ok:false,message:"방장만 시작할 수 있습니다."});
-    if (room.players.size < 2) return cb({ok:false,message:"최소 2명이 필요합니다."});
+    if (room.players.size < 1) return cb({ok:false,message:"플레이어가 필요합니다."});
     if ([...room.players.values()].some(p => p.id!==room.hostId && !p.ready)) {
       return cb({ok:false,message:"모든 플레이어가 준비해야 합니다."});
     }
