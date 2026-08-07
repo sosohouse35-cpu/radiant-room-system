@@ -439,18 +439,76 @@ $("bookButton").onclick=()=>{
 };
 
 const BUNKER_OBJECTS = [
-  {id:"weapons",label:"무기 보관함",x:150,y:90,w:70,h:120},
-  {id:"bed",label:"침대",x:150,y:220,w:150,h:85},
-  {id:"computer",label:"컴퓨터",x:150,y:315,w:105,h:55},
-  {id:"beans",label:"통조림",x:150,y:380,w:110,h:75},
-  {id:"medkit",label:"메디킷",x:360,y:500,w:120,h:50},
-  {id:"blueprints",label:"블루프린트",x:485,y:500,w:145,h:50},
-  {id:"shower",label:"샤워실",x:620,y:90,w:170,h:240},
-  {id:"power",label:"전력 공급",x:690,y:335,w:100,h:70},
-  {id:"water",label:"물",x:730,y:440,w:60,h:120},
-  {id:"vent",label:"환풍구",x:675,y:580,w:115,h:34},
-  {id:"stairs",label:"계단",x:250,y:565,w:380,h:85}
+  {id:"weapons",label:"무기 보관함",x:160,y:92,w:74,h:130,solid:true,kind:"locker"},
+  {id:"bed",label:"침대",x:170,y:242,w:165,h:92,solid:true,kind:"bed"},
+  {id:"computer",label:"컴퓨터",x:170,y:350,w:112,h:62,solid:true,kind:"computer"},
+  {id:"beans",label:"통조림",x:170,y:430,w:118,h:82,solid:true,kind:"storage"},
+  {id:"medkit",label:"메디킷",x:390,y:532,w:120,h:54,solid:true,kind:"medical"},
+  {id:"blueprints",label:"블루프린트",x:520,y:532,w:150,h:54,solid:true,kind:"blueprint"},
+  {id:"power",label:"전력 공급",x:760,y:365,w:102,h:76,solid:true,kind:"power"},
+  {id:"water",label:"물",x:792,y:468,w:70,h:120,solid:true,kind:"water"},
+  {id:"vent",label:"환풍구",x:724,y:620,w:138,h:36,solid:true,kind:"vent"},
+  {id:"stairs",label:"계단",x:300,y:610,w:390,h:92,solid:false,kind:"stairs"},
+
+  /* 샤워실은 가구가 아니라 실제 작은 방 */
+  {id:"showerRoom",label:"샤워실",x:665,y:92,w:197,h:240,solid:false,kind:"room"}
 ];
+
+const BUNKER_WALLS = [
+  /* 외벽 */
+  {x:125,y:65,w:760,h:16},
+  {x:125,y:65,w:16,h:650},
+  {x:869,y:65,w:16,h:650},
+  {x:125,y:699,w:760,h:16},
+
+  /* 사용자 스케치의 계단 옆 벽 */
+  {x:285,y:590,w:16,h:125},
+  {x:690,y:590,w:16,h:125},
+
+  /* 샤워실 벽 */
+  {x:650,y:80,w:16,h:270},
+  {x:650,y:80,w:235,h:16},
+  {x:650,y:334,w:235,h:16},
+  {x:869,y:80,w:16,h:270}
+];
+
+
+function bunkerRectHit(px,py,w=30,h=30,rect,padding=4){
+  return (
+    px+w > rect.x-padding &&
+    px < rect.x+rect.w+padding &&
+    py+h > rect.y-padding &&
+    py < rect.y+rect.h+padding
+  );
+}
+
+function bunkerBlocked(nextX,nextY){
+  // 바깥 경계
+  if(nextX<145 || nextY<85 || nextX+30>855 || nextY+30>690) return true;
+
+  // 가구 충돌
+  for(const o of BUNKER_OBJECTS){
+    if(o.solid && bunkerRectHit(nextX,nextY,30,30,o,2)) return true;
+  }
+
+  // 벽 충돌
+  for(const wall of BUNKER_WALLS){
+    if(bunkerRectHit(nextX,nextY,30,30,wall,0)) return true;
+  }
+
+  return false;
+}
+
+function bunkerStockCount(id){
+  const map={
+    beans:"beans",
+    water:"water",
+    medkit:"medkit",
+    blueprints:"blueprint"
+  };
+  const type=map[id];
+  return type ? (bunkerStock[type]||0) : null;
+}
 
 function resizeBunkerCanvas(){
   const c=$("bunkerCanvas");
@@ -468,91 +526,190 @@ function drawBunkerInterior(){
   const bctx=c.getContext("2d");
   const vw=innerWidth,vh=innerHeight;
 
-  const worldW=940,worldH=720;
-  const camX=bunkerPlayer.x-vw/2;
-  const camY=bunkerPlayer.y-vh/2;
+  // 확대: 플레이어 주변만 보이게 함
+  const scale=1.55;
+  const camX=bunkerPlayer.x-vw/(2*scale);
+  const camY=bunkerPlayer.y-vh/(2*scale);
 
-  bctx.fillStyle="#b9ad96";
-  bctx.fillRect(0,0,vw,vh);
+  bctx.save();
+  bctx.clearRect(0,0,vw,vh);
+  bctx.scale(scale,scale);
 
-  // concrete floor grid
-  bctx.strokeStyle="rgba(70,62,52,.13)";
+  const drawW=vw/scale;
+  const drawH=vh/scale;
+
+  // 콘크리트 바닥
+  bctx.fillStyle="#bcb09b";
+  bctx.fillRect(0,0,drawW,drawH);
+
+  bctx.strokeStyle="rgba(66,58,48,.16)";
   bctx.lineWidth=1;
-  for(let x=-camX%60;x<vw;x+=60){
-    bctx.beginPath();bctx.moveTo(x,0);bctx.lineTo(x,vh);bctx.stroke();
+  for(let x=-camX%52;x<drawW;x+=52){
+    bctx.beginPath();bctx.moveTo(x,0);bctx.lineTo(x,drawH);bctx.stroke();
   }
-  for(let y=-camY%60;y<vh;y+=60){
-    bctx.beginPath();bctx.moveTo(0,y);bctx.lineTo(vw,y);bctx.stroke();
+  for(let y=-camY%52;y<drawH;y+=52){
+    bctx.beginPath();bctx.moveTo(0,y);bctx.lineTo(drawW,y);bctx.stroke();
   }
 
-  // outer bunker
-  bctx.fillStyle="#d1c6af";
-  bctx.fillRect(120-camX,60-camY,700,590);
-  bctx.strokeStyle="#171411";
-  bctx.lineWidth=7;
-  bctx.strokeRect(120-camX,60-camY,700,590);
+  // 벙커 내부 바닥
+  bctx.fillStyle="#cfc4ae";
+  bctx.fillRect(141-camX,81-camY,728,618);
 
-  // internal structures
-  BUNKER_OBJECTS.forEach(o=>{
-    bctx.fillStyle=
-      o.id==="shower"?"#b8cad0":
-      o.id==="power"?"#8d8d77":
-      o.id==="stairs"?"#88725b":
-      "#9c8465";
-
-    bctx.fillRect(o.x-camX,o.y-camY,o.w,o.h);
-    bctx.strokeStyle="#211a15";
-    bctx.lineWidth=3;
-    bctx.strokeRect(o.x-camX,o.y-camY,o.w,o.h);
-    bctx.fillStyle="#211a15";
-    bctx.font="bold 13px Malgun Gothic";
-    bctx.fillText(o.label,o.x-camX+7,o.y-camY+19);
-  });
-
-  // stairs lines
-  const st=BUNKER_OBJECTS.find(o=>o.id==="stairs");
-  bctx.strokeStyle="#d8c7a9";
-  for(let i=1;i<7;i++){
-    const yy=st.y-camY+(st.h/7)*i;
+  // 샤워실 별도 바닥
+  const shower=BUNKER_OBJECTS.find(o=>o.id==="showerRoom");
+  bctx.fillStyle="#aebfc1";
+  bctx.fillRect(shower.x-camX,shower.y-camY,shower.w,shower.h);
+  bctx.strokeStyle="rgba(255,255,255,.22)";
+  for(let y=shower.y;y<shower.y+shower.h;y+=28){
     bctx.beginPath();
-    bctx.moveTo(st.x-camX+8,yy);
-    bctx.lineTo(st.x-camX+st.w-8,yy);
+    bctx.moveTo(shower.x-camX,y-camY);
+    bctx.lineTo(shower.x+shower.w-camX,y-camY);
     bctx.stroke();
   }
 
-  // player
+  // 벽
+  BUNKER_WALLS.forEach(w=>{
+    bctx.fillStyle="#403a34";
+    bctx.fillRect(w.x-camX,w.y-camY,w.w,w.h);
+  });
+
+  // 가구
+  BUNKER_OBJECTS.filter(o=>o.id!=="showerRoom").forEach(o=>{
+    const x=o.x-camX,y=o.y-camY;
+
+    if(o.kind==="locker"){
+      bctx.fillStyle="#50575a";
+      bctx.fillRect(x,y,o.w,o.h);
+      bctx.strokeStyle="#181b1c";bctx.lineWidth=3;bctx.strokeRect(x,y,o.w,o.h);
+      bctx.strokeStyle="#303638";
+      bctx.beginPath();bctx.moveTo(x+o.w/2,y);bctx.lineTo(x+o.w/2,y+o.h);bctx.stroke();
+    }else if(o.kind==="bed"){
+      bctx.fillStyle="#795b4d";bctx.fillRect(x,y,o.w,o.h);
+      bctx.fillStyle="#d7d0c4";bctx.fillRect(x+8,y+8,o.w-16,o.h-16);
+      bctx.fillStyle="#b8aaa0";bctx.fillRect(x+12,y+12,48,28);
+    }else if(o.kind==="computer"){
+      bctx.fillStyle="#54483a";bctx.fillRect(x,y,o.w,o.h);
+      bctx.fillStyle="#14231a";bctx.fillRect(x+16,y+8,58,34);
+      bctx.strokeStyle="#79d58a";bctx.strokeRect(x+16,y+8,58,34);
+      bctx.fillStyle="#292723";bctx.fillRect(x+78,y+18,20,25);
+    }else if(o.kind==="storage"){
+      bctx.fillStyle="#816b50";bctx.fillRect(x,y,o.w,o.h);
+      for(let i=1;i<3;i++){bctx.strokeStyle="#4b3d2e";bctx.beginPath();bctx.moveTo(x,y+o.h*i/3);bctx.lineTo(x+o.w,y+o.h*i/3);bctx.stroke()}
+    }else if(o.kind==="medical"){
+      bctx.fillStyle="#e1dfd5";bctx.fillRect(x,y,o.w,o.h);
+      bctx.fillStyle="#a93131";bctx.fillRect(x+o.w/2-7,y+8,14,o.h-16);
+      bctx.fillRect(x+o.w/2-22,y+o.h/2-7,44,14);
+    }else if(o.kind==="blueprint"){
+      bctx.fillStyle="#74634c";bctx.fillRect(x,y,o.w,o.h);
+      bctx.fillStyle="#497aa2";bctx.fillRect(x+9,y+8,o.w-18,o.h-16);
+    }else if(o.kind==="power"){
+      bctx.fillStyle="#696b5d";bctx.fillRect(x,y,o.w,o.h);
+      bctx.fillStyle="#9fc65e";bctx.fillRect(x+12,y+13,12,12);
+      bctx.fillStyle="#d0a14e";bctx.fillRect(x+34,y+13,12,12);
+    }else if(o.kind==="water"){
+      bctx.fillStyle="#6f929f";bctx.fillRect(x,y,o.w,o.h);
+      bctx.strokeStyle="#c3e5ee";bctx.strokeRect(x+10,y+10,o.w-20,o.h-20);
+    }else if(o.kind==="vent"){
+      bctx.fillStyle="#565b5b";bctx.fillRect(x,y,o.w,o.h);
+      bctx.strokeStyle="#262929";
+      for(let i=10;i<o.w;i+=15){bctx.beginPath();bctx.moveTo(x+i,y+5);bctx.lineTo(x+i,y+o.h-5);bctx.stroke()}
+    }else if(o.kind==="stairs"){
+      bctx.fillStyle="#7c6956";bctx.fillRect(x,y,o.w,o.h);
+      bctx.strokeStyle="#ded0b8";
+      for(let i=1;i<8;i++){const yy=y+o.h*i/8;bctx.beginPath();bctx.moveTo(x+5,yy);bctx.lineTo(x+o.w-5,yy);bctx.stroke()}
+    }
+
+    bctx.fillStyle="#201b16";
+    bctx.font="bold 12px Malgun Gothic";
+    bctx.fillText(o.label,x+6,y+17);
+
+    const count=bunkerStockCount(o.id);
+    if(count!==null){
+      bctx.fillStyle="#2b2017";
+      bctx.font="bold 16px Malgun Gothic";
+      bctx.fillText(`× ${count}`,x+8,y+o.h-8);
+    }
+  });
+
+  // 샤워실 내부 설비
+  bctx.fillStyle="#d9e5e5";
+  bctx.fillRect(690-camX,125-camY,64,42);
+  bctx.fillStyle="#87999a";
+  bctx.fillRect(800-camX,120-camY,22,120);
+  bctx.fillStyle="#e6efef";
+  bctx.fillRect(690-camX,245-camY,80,52);
+  bctx.fillStyle="#283131";
+  bctx.font="bold 13px Malgun Gothic";
+  bctx.fillText("샤워실",700-camX,112-camY);
+
+  // 플레이어는 화면 중앙
   bctx.fillStyle=me.color||"#fff";
-  bctx.fillRect(vw/2-15,vh/2-15,30,30);
+  bctx.fillRect(vw/(2*scale)-15,vh/(2*scale)-15,30,30);
   bctx.strokeStyle="#fff";
   bctx.lineWidth=2;
-  bctx.strokeRect(vw/2-15,vh/2-15,30,30);
+  bctx.strokeRect(vw/(2*scale)-15,vh/(2*scale)-15,30,30);
 
+  bctx.restore();
   requestAnimationFrame(drawBunkerInterior);
 }
 
 function bunkerNearestObject(){
-  let result=null,best=90;
+  let result=null,best=92;
+
   for(const o of BUNKER_OBJECTS){
+    // 계단은 장식용
+    if(o.id==="stairs" || o.id==="showerRoom") continue;
+
     const cx=o.x+o.w/2,cy=o.y+o.h/2;
     const d=Math.hypot(bunkerPlayer.x-cx,bunkerPlayer.y-cy);
-    if(d<best){best=d;result=o}
+
+    if(d<best){
+      best=d;
+      result=o;
+    }
   }
+
   bunkerNear=result;
   $("bunkerPrompt").classList.toggle("hidden",!result);
-  if(result)$("bunkerPrompt").textContent=`E · ${result.label} 사용`;
+
+  if(result){
+    const count=bunkerStockCount(result.id);
+
+    if(count!==null){
+      const action=
+        result.id==="water" ? "마시기" :
+        result.id==="beans" ? "먹기" :
+        result.id==="medkit" ? "사용" :
+        "확인";
+
+      $("bunkerPrompt").textContent=
+        `E · ${result.label} ${count}개 · ${action}`;
+    }else{
+      $("bunkerPrompt").textContent=`E · ${result.label} 사용`;
+    }
+  }
 }
 
 function bunkerMoveLoop(){
   if(!bunkerRunning)return;
+
   let dx=(bunkerKeys.has("d")?1:0)-(bunkerKeys.has("a")?1:0);
   let dy=(bunkerKeys.has("s")?1:0)-(bunkerKeys.has("w")?1:0);
 
   if(Math.abs(joystickX)>.03||Math.abs(joystickY)>.03){
-    dx=joystickX;dy=joystickY;
-  }else if(dx&&dy){dx*=.707;dy*=.707}
+    dx=joystickX;
+    dy=joystickY;
+  }else if(dx&&dy){
+    dx*=.707;
+    dy*=.707;
+  }
 
-  bunkerPlayer.x=Math.max(145,Math.min(795,bunkerPlayer.x+dx*3.2));
-  bunkerPlayer.y=Math.max(85,Math.min(625,bunkerPlayer.y+dy*3.2));
+  const nx=bunkerPlayer.x+dx*3.0;
+  const ny=bunkerPlayer.y+dy*3.0;
+
+  if(!bunkerBlocked(nx,bunkerPlayer.y)) bunkerPlayer.x=nx;
+  if(!bunkerBlocked(bunkerPlayer.x,ny)) bunkerPlayer.y=ny;
+
   bunkerNearestObject();
   requestAnimationFrame(bunkerMoveLoop);
 }
@@ -663,6 +820,30 @@ $("computerContent").onclick=e=>{
   });
 };
 
+function consumeBunker(type){
+  ioClient.emit("consume-bunker-item",type,r=>{
+    if(!r.ok){
+      toast(r.message);
+      return;
+    }
+
+    bunkerStock=r.bunkerStock||bunkerStock;
+
+    if(type==="water"){
+      thirst=Math.min(100,thirst+70);
+      toast("물을 마셨습니다. 갈증 +70");
+    }else if(type==="beans"){
+      hunger=Math.min(100,hunger+50);
+      toast("통조림을 먹었습니다. 허기 +50");
+    }else if(type==="medkit"){
+      hp=100;
+      toast("메디킷을 사용했습니다. HP 완전 회복");
+    }
+
+    updateStatusUI();
+  });
+}
+
 function interactBunker(){
   if(!bunkerNear)return;
 
@@ -677,17 +858,17 @@ function interactBunker(){
   }
 
   if(bunkerNear.id==="beans"){
-    toast(`통조림 ${bunkerStock.beans||0}개`);
+    consumeBunker("beans");
     return;
   }
 
   if(bunkerNear.id==="water"){
-    toast(`물 ${bunkerStock.water||0}개`);
+    consumeBunker("water");
     return;
   }
 
   if(bunkerNear.id==="medkit"){
-    toast(`메디킷 ${bunkerStock.medkit||0}개`);
+    consumeBunker("medkit");
     return;
   }
 
@@ -719,9 +900,13 @@ function enterBunkerScene(){
   $("fadeOverlay").classList.remove("hidden");
   resizeBunkerCanvas();
 
-  // 카메라는 벙커 계단 위에서 시작
-  bunkerPlayer.x=280;
-  bunkerPlayer.y=595;
+  // 상태책은 벙커 안에서만 표시
+  $("bookButton").classList.remove("hidden");
+  $("statusPanel").classList.add("hidden");
+
+  // 계단은 장식용이며, 벙커 진입 시 계단의 위쪽에서 시작
+  bunkerPlayer.x=330;
+  bunkerPlayer.y=560;
   bunkerRunning=true;
 
   drawBunkerInterior();
@@ -781,7 +966,7 @@ ioClient.on("bunker-state",d=>{
   securityState=d.security||securityState;
   updateStatusUI();
 });
-ioClient.on("game-started",d=>{show("game");build();players={};d.players.forEach(p=>players[p.id]={...p});me={...players[myId],hands:[],stored:[]};floor=1;bunker=d.bunker;defs=d.itemDefs;items=d.items;ends=d.endsAt;
+ioClient.on("game-started",d=>{show("game");$("bookButton").classList.add("hidden");$("statusPanel").classList.add("hidden");build();players={};d.players.forEach(p=>players[p.id]={...p});me={...players[myId],hands:[],stored:[]};floor=1;bunker=d.bunker;defs=d.itemDefs;items=d.items;ends=d.endsAt;
 day=d.day||1;sanity=d.sanity||0;bounty=d.bounty||0;bountyLevel=d.bountyLevel||1;bunkerStock=d.bunkerStock||{};weapons=d.weapons||{};power=d.power??100;securityState=d.security||"LOCKED";
 updateStatusUI();$("timer").textContent="60";renderSlots();running=true;last=performance.now();requestAnimationFrame(loop)});
 ioClient.on("player-moved",d=>{if(players[d.id])Object.assign(players[d.id],d)});ioClient.on("item-taken",d=>{let i=items.find(x=>x.id===d.itemId);if(i)i.taken=true;if(d.playerId===myId){me.hands=d.hands;renderSlots()}});ioClient.on("items-deposited",d=>{if(d.playerId===myId){me.hands=d.hands;me.stored=d.stored;renderSlots()}});
