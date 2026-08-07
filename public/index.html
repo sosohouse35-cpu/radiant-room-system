@@ -6,7 +6,21 @@
 <section id="game" class="screen game">
 <canvas id="canvas"></canvas>
 <div class="hud left"><b id="floor">1층</b><span>E 줍기 · F 보관 · Q 계단</span></div>
-<div class="hud clock"><b id="timer">95</b>초</div>
+<div class="hud clock">
+  <div id="dayLabel">DAY 1</div>
+  <div><b id="timer">60</b>초</div>
+</div>
+<button id="bookButton" class="book-button" type="button">📖</button>
+
+<div id="statusPanel" class="status-panel hidden">
+  <h3>STATUS</h3>
+  <div>HP <b id="hpValue">100 / 100</b></div>
+  <div>Sanity <b id="sanityValue">0 SP</b></div>
+  <div>Hunger <b id="hungerValue">100%</b></div>
+  <div>Thirst <b id="thirstValue">100%</b></div>
+  <div>Status <b id="conditionValue">안정</b></div>
+  <div>Day <b id="statusDay">1</b></div>
+</div>
 <div id="prompt" class="prompt hidden">E · 줍기</div>
 <div class="hands"><div>손 4칸</div><div id="slots" class="slots"></div><small id="stored">보관함 비어 있음</small></div>
 <button id="full" class="full">⛶ 전체화면</button>
@@ -18,6 +32,38 @@
     <button id="mPick">줍기</button>
     <button id="mStore">보관</button>
     <button id="mStair">계단</button>
+  </div>
+</div>
+
+<div id="fadeOverlay" class="fade-overlay hidden"></div>
+
+<div id="bunkerUI" class="bunker-ui hidden">
+  <canvas id="bunkerCanvas"></canvas>
+
+  <div class="bunker-topbar">
+    <strong id="bunkerDay">DAY 2</strong>
+    <span id="bunkerStatusText">벙커 내부</span>
+  </div>
+
+  <div id="bunkerPrompt" class="bunker-prompt hidden">E · 사용</div>
+
+  <button id="computerClose" class="computer-close hidden">닫기</button>
+
+  <div id="computerPanel" class="computer-panel hidden">
+    <div class="computer-title">AFTERGLOW OS</div>
+    <div class="computer-tabs">
+      <button data-tab="cctv">CCTV</button>
+      <button data-tab="security">SECURITY</button>
+      <button data-tab="bounty">BOUNTY HUNTER</button>
+      <button data-tab="shop">SANITY SHOP</button>
+    </div>
+    <div id="computerContent" class="computer-content"></div>
+  </div>
+
+  <div id="weaponPanel" class="weapon-panel hidden">
+    <h3>무기 보관소</h3>
+    <div id="weaponList"></div>
+    <button id="weaponClose">닫기</button>
   </div>
 </div>
 </section>
