@@ -311,3 +311,102 @@
   }
 }
 
+
+
+/* =========================================================
+   v8 visibility fixes
+========================================================= */
+
+/* 벙커 Canvas(z60) 위로 책/채팅/모바일 UI를 확실히 올림 */
+.book-button {
+  z-index: 125 !important;
+}
+
+.status-panel {
+  z-index: 126 !important;
+}
+
+.message-button {
+  z-index: 125 !important;
+}
+
+.message-panel {
+  z-index: 130 !important;
+}
+
+.mobile {
+  z-index: 125 !important;
+}
+
+.bunker-prompt {
+  z-index: 128 !important;
+}
+
+/* 팀 채팅 */
+.chat-list {
+  min-height: 220px;
+  max-height: 42vh;
+  overflow-y: auto;
+  padding: 8px;
+  background: #0d100d;
+  border: 1px solid rgba(255,255,255,.10);
+}
+
+.chat-message {
+  margin: 7px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #1a1e19;
+}
+
+.chat-message.mine {
+  background: #29311f;
+}
+
+.chat-message .chat-name {
+  display: block;
+  margin-bottom: 3px;
+  color: #d6f055;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.chat-message .chat-time {
+  margin-left: 6px;
+  color: #858d80;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.chat-compose {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.chat-compose input {
+  margin: 0;
+  min-width: 0;
+}
+
+.chat-compose button {
+  margin: 0;
+}
+
+/* 작은 화면에서도 아날로그 조이스틱을 벙커 위에 표시 */
+@media(max-width:760px),(hover:none) and (pointer:coarse){
+  .mobile{
+    display:block !important;
+    z-index:125 !important;
+  }
+
+  .joystick-base{
+    display:block !important;
+  }
+
+  .message-button,
+  .book-button{
+    display:block;
+  }
+}
