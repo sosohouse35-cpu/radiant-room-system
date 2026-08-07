@@ -210,3 +210,27 @@
   .computer-panel{inset:5% 4%}
   .status-panel{right:10px;top:160px}
 }
+
+
+/* v6: 벙커 HUD는 더 확대된 화면을 전제로 배치 */
+#bunkerCanvas{
+  image-rendering:auto;
+}
+
+.bunker-topbar{
+  font-size:14px;
+}
+
+.bunker-storage-count{
+  font-size:13px;
+  font-weight:900;
+}
+
+.book-button{
+  top:68px;
+}
+
+.status-panel{
+  top:64px;
+}
+
