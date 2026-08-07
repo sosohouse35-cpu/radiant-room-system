@@ -32,6 +32,19 @@ let grids={},furn={},players={},items=[],me={},floor=1,bunker,defs={},keys=new S
 let day=1,sanity=0,bounty=0,bountyLevel=1,bunkerStock={},weapons={},power=100,securityState="LOCKED";
 let hp=100,hunger=100,thirst=100;
 let bunkerPlayer={x:330,y:560};
+
+let expeditionRunning=false;
+let expeditionItems=[];
+let expeditionPlayer={x:250,y:850};
+let expeditionOthers={};
+let expeditionMutants={};
+let mutantNear=null;
+let expeditionNear=null;
+let expeditionLastSend=0;
+let equippedWeapon=null;
+let swingUntil=0;
+let dayStartedAt=Date.now();
+let dayLengthMs=120000;
 let bunkerOthers={};
 let lastBunkerSend=0;
 let bunkerKeys=new Set();
@@ -439,7 +452,17 @@ joyBase.addEventListener("lostpointercapture",()=>{
   joyPointerId=null;
   resetJoystick();
 });
-$("mPick").onclick=pickup;$("mStore").onclick=store;$("mStair").onclick=stair;$("full").onclick=async()=>{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen()};
+$("mPick").onclick=()=>{
+  if(expeditionRunning)takeExpeditionItem();
+  else if(bunkerRunning)interactBunker();
+  else pickup();
+};$("mStore").onclick=()=>{
+  if(expeditionRunning){
+    toast("탐사 중에는 벙커로 귀환해야 보관됩니다.");
+  }else{
+    store();
+  }
+};$("mStair").onclick=stair;$("full").onclick=async()=>{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen()};
 
 function updateStatusUI(){
   $("dayLabel").textContent=`DAY ${day}`;
@@ -457,6 +480,10 @@ function updateStatusUI(){
   else if(thirst<30)condition="목마름";
 
   $("conditionValue").textContent=condition;
+
+  if($("hpBar"))$("hpBar").style.width=`${Math.max(0,Math.min(100,hp))}%`;
+  if($("hungerBar"))$("hungerBar").style.width=`${Math.max(0,Math.min(100,hunger))}%`;
+  if($("thirstBar"))$("thirstBar").style.width=`${Math.max(0,Math.min(100,thirst))}%`;
 }
 
 $("bookButton").onclick=()=>{
@@ -806,16 +833,45 @@ function bunkerMoveLoop(){
 }
 
 function openWeaponStorage(){
-  const names={axe:"🪓 도끼"};
+  const names={
+    woodenStick:"🪵 나무 막대기",
+    axe:"🪓 도끼"
+  };
+
   const entries=Object.entries(weapons||{}).filter(([,count])=>count>0);
 
   $("weaponList").innerHTML=
     entries.length
-      ? entries.map(([type,count])=>`<div>${names[type]||type} × ${count}</div>`).join("")
+      ? entries.map(([type,count])=>`
+        <div class="weapon-row">
+          <span>${names[type]||type} × ${count}</span>
+          <button data-equip="${type}">
+            ${equippedWeapon===type ? "장착 중" : "장착"}
+          </button>
+        </div>
+      `).join("")
       : "<div>현재 보관된 무기가 없습니다.</div>";
 
   $("weaponPanel").classList.remove("hidden");
 }
+
+$("weaponList").addEventListener("click",e=>{
+  const weapon=e.target.dataset.equip;
+  if(!weapon)return;
+
+  ioClient.emit("equip-weapon",weapon,r=>{
+    if(!r?.ok){
+      toast(r?.message||"장착 실패");
+      return;
+    }
+
+    equippedWeapon=r.weapon;
+    toast("무기 장착");
+    openWeaponStorage();
+
+    $("swingButton").classList.remove("hidden");
+  });
+});
 
 $("weaponClose").onclick=()=>$("weaponPanel").classList.add("hidden");
 
@@ -920,16 +976,15 @@ function consumeBunker(type){
 
     bunkerStock=r.bunkerStock||bunkerStock;
 
-    if(type==="water"){
-      thirst=Math.min(100,thirst+70);
-      toast("물을 마셨습니다. 갈증 +70");
-    }else if(type==="beans"){
-      hunger=Math.min(100,hunger+50);
-      toast("통조림을 먹었습니다. 허기 +50");
-    }else if(type==="medkit"){
-      hp=100;
-      toast("메디킷을 사용했습니다. HP 완전 회복");
+    if(r.stats){
+      hp=r.stats.hp??hp;
+      hunger=r.stats.hunger??hunger;
+      thirst=r.stats.thirst??thirst;
     }
+
+    if(type==="water")toast("물을 마셨습니다. 갈증 +70");
+    else if(type==="beans")toast("통조림을 먹었습니다. 허기 +50");
+    else if(type==="medkit")toast("메디킷을 사용했습니다. HP 완전 회복");
 
     updateStatusUI();
   });
@@ -974,7 +1029,7 @@ function interactBunker(){
   }
 
   if(bunkerNear.id==="bunkerDoor"){
-    toast("벙커문: 탐사 기능 준비 중");
+    startGroceryExpedition();
     return;
   }
 
@@ -1148,6 +1203,538 @@ ioClient.on("bunker-player-left",data=>{
 });
 
 
+
+// =========================================================
+// v10 식료품점 탐사
+// =========================================================
+const expeditionCanvas=$("expeditionCanvas");
+const exctx=expeditionCanvas.getContext("2d");
+
+const EX_W=1200,EX_H=960,EX_P=30;
+const EX_SOLIDS=[
+  // 바깥 벽
+  {x:0,y:0,w:1200,h:30},
+  {x:0,y:930,w:1200,h:30},
+  {x:0,y:0,w:30,h:960},
+  {x:1170,y:0,w:30,h:960},
+
+  // 계산대
+  {x:160,y:120,w:360,h:65},
+
+  // 진열대 열
+  {x:190,y:270,w:170,h:70},
+  {x:420,y:270,w:170,h:70},
+  {x:650,y:270,w:170,h:70},
+  {x:880,y:270,w:150,h:70},
+
+  {x:190,y:470,w:170,h:70},
+  {x:420,y:470,w:170,h:70},
+  {x:650,y:470,w:170,h:70},
+  {x:880,y:470,w:150,h:70},
+
+  {x:190,y:670,w:170,h:70},
+  {x:420,y:670,w:170,h:70},
+  {x:650,y:670,w:170,h:70},
+  {x:880,y:670,w:150,h:70}
+];
+
+function resizeExpeditionCanvas(){
+  const d=devicePixelRatio||1;
+  const vw=visualViewport?.width||innerWidth;
+  const vh=visualViewport?.height||innerHeight;
+
+  expeditionCanvas.width=Math.round(vw*d);
+  expeditionCanvas.height=Math.round(vh*d);
+  expeditionCanvas.style.width=`${vw}px`;
+  expeditionCanvas.style.height=`${vh}px`;
+  exctx.setTransform(d,0,0,d,0,0);
+}
+
+function exBlocked(x,y){
+  return EX_SOLIDS.some(r=>
+    x+EX_P>r.x &&
+    x<r.x+r.w &&
+    y+EX_P>r.y &&
+    y<r.y+r.h
+  );
+}
+
+function exFindNear(){
+  expeditionNear=null;
+  let best=999;
+
+  expeditionItems.forEach(item=>{
+    if(item.taken)return;
+
+    const dist=Math.hypot(
+      expeditionPlayer.x+15-item.x,
+      expeditionPlayer.y+15-item.y
+    );
+
+    if(dist<75&&dist<best){
+      best=dist;
+      expeditionNear=item;
+    }
+  });
+
+  $("expeditionPrompt").classList.toggle("hidden",!expeditionNear);
+
+  if(expeditionNear){
+    $("expeditionPrompt").textContent=
+      `E · ${ICON[expeditionNear.type]} ${ITEM_NAME[expeditionNear.type]} 줍기 (${defs[expeditionNear.type]?.slots||1}칸)`;
+  }
+}
+
+function drawExpedition(){
+  if(!expeditionRunning)return;
+
+  const vw=visualViewport?.width||innerWidth;
+  const vh=visualViewport?.height||innerHeight;
+  const camX=expeditionPlayer.x+15-vw/2;
+  const camY=expeditionPlayer.y+15-vh/2;
+
+  exctx.clearRect(0,0,vw,vh);
+
+  // 바닥
+  exctx.fillStyle="#aca58d";
+  exctx.fillRect(0,0,vw,vh);
+
+  // 체크무늬 타일
+  const tile=48;
+  for(let y=Math.floor(camY/tile)*tile;y<camY+vh+tile;y+=tile){
+    for(let x=Math.floor(camX/tile)*tile;x<camX+vw+tile;x+=tile){
+      exctx.fillStyle=
+        ((Math.floor(x/tile)+Math.floor(y/tile))%2===0)
+        ? "#bbb49c"
+        : "#a9a28c";
+      exctx.fillRect(x-camX,y-camY,tile,tile);
+    }
+  }
+
+  // 벽/선반
+  EX_SOLIDS.forEach((r,i)=>{
+    exctx.fillStyle=i<4?"#49443a":"#75654d";
+    exctx.fillRect(r.x-camX,r.y-camY,r.w,r.h);
+
+    exctx.strokeStyle="#211e19";
+    exctx.lineWidth=3;
+    exctx.strokeRect(r.x-camX,r.y-camY,r.w,r.h);
+  });
+
+  // 아이템
+  expeditionItems.forEach(item=>{
+    if(item.taken)return;
+    exctx.font="27px sans-serif";
+    exctx.fillText(ICON[item.type],item.x-camX,item.y-camY);
+  });
+
+  // 다른 탐사자
+  Object.values(expeditionOthers).forEach(p=>{
+    if(p.id===myId)return;
+
+    exctx.fillStyle=p.color||"#bbb";
+    exctx.fillRect(p.x-camX,p.y-camY,30,30);
+
+    exctx.fillStyle="#eee";
+    exctx.font="11px sans-serif";
+    exctx.fillText(p.nickname||"Player",p.x-camX-3,p.y-camY-6);
+  });
+
+  // 돌연변이
+  let nearestMutantDistance=Infinity;
+  mutantNear=null;
+
+  Object.values(expeditionMutants).forEach(m=>{
+    if(!m.alive)return;
+
+    const sx=m.x-camX;
+    const sy=m.y-camY;
+
+    const dist=Math.hypot(
+      expeditionPlayer.x+15-(m.x+18),
+      expeditionPlayer.y+15-(m.y+18)
+    );
+
+    if(dist<nearestMutantDistance){
+      nearestMutantDistance=dist;
+      mutantNear=m;
+    }
+
+    // 몸
+    exctx.fillStyle="#667948";
+    exctx.fillRect(sx,sy,36,36);
+
+    // 변이 반점
+    exctx.fillStyle="#9ec45b";
+    exctx.fillRect(sx+4,sy+5,8,8);
+    exctx.fillRect(sx+22,sy+18,9,9);
+
+    // 눈
+    exctx.fillStyle="#f4e36d";
+    exctx.fillRect(sx+8,sy+12,5,5);
+    exctx.fillRect(sx+23,sy+12,5,5);
+
+    // HP bar
+    exctx.fillStyle="#281412";
+    exctx.fillRect(sx,sy-9,36,5);
+    exctx.fillStyle="#ba4b3f";
+    exctx.fillRect(sx,sy-9,36*(m.hp/m.maxHp),5);
+  });
+
+  $("mutantWarning").classList.toggle(
+    "hidden",
+    nearestMutantDistance>260
+  );
+
+  // 내 캐릭터 중앙
+  exctx.fillStyle=me.color||"#fff";
+  exctx.fillRect(vw/2-15,vh/2-15,30,30);
+  exctx.strokeStyle="#fff";
+  exctx.lineWidth=2;
+  exctx.strokeRect(vw/2-15,vh/2-15,30,30);
+
+  // 장착 무기
+  if(equippedWeapon){
+    exctx.save();
+    exctx.translate(vw/2,vh/2);
+
+    const swinging=performance.now()<swingUntil;
+    exctx.rotate(swinging?1.0:0.25);
+
+    exctx.strokeStyle=
+      equippedWeapon==="axe"
+        ? "#8c9495"
+        : "#6f4b2f";
+
+    exctx.lineWidth=
+      equippedWeapon==="axe" ? 8 : 6;
+
+    exctx.beginPath();
+    exctx.moveTo(12,0);
+    exctx.lineTo(58,0);
+    exctx.stroke();
+
+    if(equippedWeapon==="axe"){
+      exctx.fillStyle="#aeb7b8";
+      exctx.fillRect(47,-13,22,26);
+    }
+
+    exctx.restore();
+  }
+
+  // 원형 시야: 원 밖은 완전 검정
+  const radius=Math.min(vw,vh)*0.34;
+  exctx.save();
+
+  exctx.fillStyle="rgba(0,0,0,.96)";
+  exctx.beginPath();
+  exctx.rect(0,0,vw,vh);
+  exctx.arc(vw/2,vh/2,radius,0,Math.PI*2,true);
+  exctx.fill("evenodd");
+
+  // 시야 가장자리 부드럽게
+  const grad=exctx.createRadialGradient(
+    vw/2,vh/2,radius*.72,
+    vw/2,vh/2,radius
+  );
+  grad.addColorStop(0,"rgba(0,0,0,0)");
+  grad.addColorStop(1,"rgba(0,0,0,.55)");
+  exctx.fillStyle=grad;
+  exctx.beginPath();
+  exctx.arc(vw/2,vh/2,radius,0,Math.PI*2);
+  exctx.fill();
+
+  exctx.restore();
+
+  requestAnimationFrame(drawExpedition);
+}
+
+function expeditionLoop(){
+  if(!expeditionRunning)return;
+
+  let dx=(keys.has("d")||keys.has("arrowright")?1:0)-
+         (keys.has("a")||keys.has("arrowleft")?1:0);
+
+  let dy=(keys.has("s")||keys.has("arrowdown")?1:0)-
+         (keys.has("w")||keys.has("arrowup")?1:0);
+
+  if(Math.abs(joystickX)>.03||Math.abs(joystickY)>.03){
+    dx=joystickX;
+    dy=joystickY;
+  }else if(dx&&dy){
+    dx*=.707;
+    dy*=.707;
+  }
+
+  const nx=expeditionPlayer.x+dx*3.2;
+  const ny=expeditionPlayer.y+dy*3.2;
+
+  if(!exBlocked(nx,expeditionPlayer.y))expeditionPlayer.x=nx;
+  if(!exBlocked(expeditionPlayer.x,ny))expeditionPlayer.y=ny;
+
+  exFindNear();
+
+  const now=performance.now();
+  if(now-expeditionLastSend>70){
+    ioClient.emit("expedition-move",{
+      x:expeditionPlayer.x,
+      y:expeditionPlayer.y
+    });
+    expeditionLastSend=now;
+  }
+
+  requestAnimationFrame(expeditionLoop);
+}
+
+function takeExpeditionItem(){
+  if(!expeditionNear){
+    toast("가까운 아이템이 없습니다.");
+    return;
+  }
+
+  ioClient.emit("take-expedition-item",expeditionNear.id,r=>{
+    if(!r?.ok){
+      toast(r?.message||"획득 실패");
+      return;
+    }
+
+    me.hands=[...r.hands];
+    renderSlots();
+  });
+}
+
+function startGroceryExpedition(){
+  ioClient.emit("start-expedition",r=>{
+    if(!r?.ok){
+      toast(r?.message||"탐사 시작 실패");
+      return;
+    }
+
+    bunkerRunning=false;
+    $("bunkerUI").classList.add("hidden");
+    $("bookButton").classList.add("hidden");
+    $("messageButton").classList.add("hidden");
+    $("statusPanel").classList.add("hidden");
+
+    expeditionItems=r.items;
+    expeditionMutants={};
+    (r.mutants||[]).forEach(m=>expeditionMutants[m.id]={...m});
+
+    expeditionPlayer={
+      x:r.player.x,
+      y:r.player.y
+    };
+    me.hands=[...r.player.hands];
+    equippedWeapon=r.player.equipped||equippedWeapon;
+
+    expeditionOthers={};
+    expeditionRunning=true;
+
+    $("expeditionUI").classList.remove("hidden");
+    $("expeditionDay").textContent=`DAY ${day}`;
+
+    if(equippedWeapon){
+      $("swingButton").classList.remove("hidden");
+    }
+
+    resizeExpeditionCanvas();
+    renderSlots();
+    applyMobileControlsVisibility();
+    drawExpedition();
+    expeditionLoop();
+  });
+}
+
+function returnToBunker(){
+  ioClient.emit("return-from-expedition",r=>{
+    if(!r?.ok){
+      toast(r?.message||"귀환 실패");
+      return;
+    }
+
+    expeditionRunning=false;
+    $("mutantWarning").classList.add("hidden");
+    expeditionMutants={};
+    $("expeditionUI").classList.add("hidden");
+
+    bunkerStock=r.bunkerStock||bunkerStock;
+    weapons=r.weapons||weapons;
+
+    if(r.stats){
+      hp=r.stats.hp??hp;
+      hunger=r.stats.hunger??hunger;
+      thirst=r.stats.thirst??thirst;
+    }
+
+    bunkerPlayer.x=r.player?.x??330;
+    bunkerPlayer.y=r.player?.y??560;
+
+    // DAY는 탐사 귀환 때문에 바꾸지 않음
+    updateStatusUI();
+    enterBunkerScene();
+  });
+}
+
+function swingWeapon(){
+  if(!equippedWeapon){
+    toast("장착한 무기가 없습니다.");
+    return;
+  }
+
+  swingUntil=performance.now()+260;
+  ioClient.emit("swing-weapon");
+
+  if(!expeditionRunning || !mutantNear || !mutantNear.alive){
+    return;
+  }
+
+  const distance=Math.hypot(
+    expeditionPlayer.x+15-(mutantNear.x+18),
+    expeditionPlayer.y+15-(mutantNear.y+18)
+  );
+
+  if(distance>95){
+    return;
+  }
+
+  ioClient.emit("attack-mutant",{mutantId:mutantNear.id},r=>{
+    if(!r?.ok){
+      return;
+    }
+
+    if(r.killed){
+      toast("돌연변이를 처치했습니다.");
+    }
+  });
+}
+
+$("returnBunkerButton").onclick=returnToBunker;
+$("expeditionPrompt").onclick=takeExpeditionItem;
+$("swingButton").onclick=swingWeapon;
+if($("mSwing"))$("mSwing").onclick=swingWeapon;
+
+addEventListener("keydown",e=>{
+  if(!expeditionRunning)return;
+
+  if(e.key.toLowerCase()==="e"){
+    takeExpeditionItem();
+  }
+
+  if(e.code==="Space"){
+    e.preventDefault();
+    swingWeapon();
+  }
+});
+
+ioClient.on("expedition-item-taken",d=>{
+  const item=expeditionItems.find(i=>i.id===d.itemId);
+  if(item)item.taken=true;
+
+  if(d.playerId===myId){
+    me.hands=[...d.hands];
+    renderSlots();
+  }
+});
+
+ioClient.on("expedition-player-entered",p=>{
+  expeditionOthers[p.id]=p;
+});
+
+ioClient.on("expedition-player-moved",p=>{
+  expeditionOthers[p.id]={...(expeditionOthers[p.id]||{}),...p};
+});
+
+ioClient.on("expedition-player-left",d=>{
+  delete expeditionOthers[d.id];
+});
+
+ioClient.on("player-equipped",d=>{
+  if(d.id===myId){
+    equippedWeapon=d.weapon;
+  }
+});
+
+ioClient.on("weapon-swung",d=>{
+  if(d.id===myId){
+    swingUntil=performance.now()+260;
+  }
+});
+
+
+ioClient.on("mutant-moved",m=>{
+  expeditionMutants[m.id]={
+    ...(expeditionMutants[m.id]||{}),
+    ...m,
+    maxHp:expeditionMutants[m.id]?.maxHp||70
+  };
+});
+
+ioClient.on("mutant-hit",d=>{
+  const m=expeditionMutants[d.id];
+  if(!m)return;
+
+  m.hp=d.hp;
+  m.maxHp=d.maxHp;
+  m.alive=d.alive;
+
+  if(!d.alive){
+    setTimeout(()=>{
+      delete expeditionMutants[d.id];
+    },500);
+  }
+});
+
+ioClient.on("explorer-damaged",d=>{
+  if(d.playerId!==myId)return;
+
+  hp=d.hp;
+  updateStatusUI();
+
+  toast(`돌연변이 공격 -${d.damage} HP`);
+
+  if(hp<=0){
+    expeditionRunning=false;
+
+    $("expeditionUI").innerHTML=`
+      <div style="
+        position:fixed;
+        inset:0;
+        display:grid;
+        place-items:center;
+        background:#000;
+        color:#d95146;
+        z-index:9999;
+        text-align:center">
+        <div>
+          <h1 style="font-size:52px;margin:0">YOU DIED</h1>
+          <p style="color:#ddd">돌연변이에게 당했습니다.</p>
+        </div>
+      </div>
+    `;
+  }
+});
+
+ioClient.on("day-changed",d=>{
+  day=d.day;
+  dayStartedAt=d.dayStartedAt;
+  dayLengthMs=d.dayLengthMs||dayLengthMs;
+
+  const mine=d.players.find(p=>p.id===myId);
+  if(mine){
+    hp=mine.hp??hp;
+    hunger=mine.hunger??hunger;
+    thirst=mine.thirst??thirst;
+  }
+
+  updateStatusUI();
+
+  if($("expeditionDay")){
+    $("expeditionDay").textContent=`DAY ${day}`;
+  }
+
+  toast(`DAY ${day}`);
+});
+
 ioClient.on("scavenge-result",d=>{
   day=d.day||day;
   sanity=d.sanity??sanity;
@@ -1192,6 +1779,13 @@ ioClient.on("bunker-state",d=>{
   weapons=d.weapons||weapons;
   power=d.power??power;
   securityState=d.security||securityState;
+
+  if(d.stats){
+    hp=d.stats.hp??hp;
+    hunger=d.stats.hunger??hunger;
+    thirst=d.stats.thirst??thirst;
+  }
+
   updateStatusUI();
 });
 
@@ -1222,6 +1816,23 @@ $("messageButton").classList.add("hidden");
 $("statusPanel").classList.add("hidden");
 $("messagePanel").classList.add("hidden");
 build();players={};d.players.forEach(p=>players[p.id]={...p});me={...players[myId],hands:[],stored:[]};floor=1;bunker=d.bunker;defs=d.itemDefs;items=d.items;ends=d.endsAt;
-day=d.day||1;sanity=d.sanity||0;bounty=d.bounty||0;bountyLevel=d.bountyLevel||1;bunkerStock=d.bunkerStock||{};weapons=d.weapons||{};power=d.power??100;securityState=d.security||"LOCKED";
+day=d.day||1;
+dayStartedAt=d.dayStartedAt||Date.now();
+dayLengthMs=d.dayLengthMs||120000;
+sanity=d.sanity||0;
+bounty=d.bounty||0;
+bountyLevel=d.bountyLevel||1;
+bunkerStock=d.bunkerStock||{};
+weapons=d.weapons||{};
+power=d.power??100;
+securityState=d.security||"LOCKED";
+
+const mine=d.players.find(p=>p.id===myId);
+if(mine){
+  hp=mine.hp??100;
+  hunger=mine.hunger??100;
+  thirst=mine.thirst??100;
+  equippedWeapon=mine.equipped||null;
+}
 updateStatusUI();$("timer").textContent="60";renderSlots();running=true;last=performance.now();requestAnimationFrame(loop)});
 ioClient.on("player-moved",d=>{if(players[d.id])Object.assign(players[d.id],d)});ioClient.on("item-taken",d=>{let i=items.find(x=>x.id===d.itemId);if(i)i.taken=true;if(d.playerId===myId){me.hands=d.hands;renderSlots()}});ioClient.on("items-deposited",d=>{if(d.playerId===myId){me.hands=d.hands;me.stored=d.stored;renderSlots()}});
