@@ -11,11 +11,14 @@
 <div class="hands"><div>손 4칸</div><div id="slots" class="slots"></div><small id="stored">보관함 비어 있음</small></div>
 <button id="full" class="full">⛶ 전체화면</button>
 <div class="mobile">
-  <div class="joy">
-    <button data-dir="up" class="up">▲</button><button data-dir="left" class="left">◀</button>
-    <i>●</i><button data-dir="right" class="right">▶</button><button data-dir="down" class="down">▼</button>
+  <div id="joystickBase" class="joystick-base">
+    <div id="joystickKnob" class="joystick-knob"></div>
   </div>
-  <div class="acts"><button id="mPick">줍기</button><button id="mStore">보관</button><button id="mStair">계단</button></div>
+  <div class="acts">
+    <button id="mPick">줍기</button>
+    <button id="mStore">보관</button>
+    <button id="mStair">계단</button>
+  </div>
 </div>
 </section>
 <dialog id="dlg"><form id="form"><h2>새 방</h2><input id="title" required placeholder="방 제목"><select id="max"><option>1</option><option>2</option><option selected>4</option><option>6</option><option>8</option></select><button>생성</button></form></dialog>
