@@ -16,12 +16,19 @@ ioClient.on("room-updated",r=>{room=r;renderLobby()});ioClient.on("connect",()=>
 
 const canvas=$("canvas"),ctx=canvas.getContext("2d");
 const W=2400,H=1600,T=40,P=30,SPEED=235,COLS=W/T,ROWS=H/T;
-const ICON={beans:"🥫",water:"💧",soap:"🧼",tape:"🩹",trap:"🪤",spray:"🧯",medkit:"💊",battery:"🔋",flashlight:"🔦",mask:"😷",axe:"🪓",backpack:"🎒",blueprint:"📘",toolbox:"🧰",map:"🗺️",radio:"📻"};
+const ICON={beans:"🥫",water:"💧",soap:"🧼",tape:"🩹",trap:"🪤",spray:"🧴",medkit:"💊",battery:"🔋",flashlight:"🔦",mask:"😷",axe:"🪓",backpack:"🎒",blueprint:"📘",toolbox:"🧰",map:"🗺️",radio:"📻"};
+const ITEM_NAME={beans:"통조림",water:"물",soap:"비누",tape:"테이프",trap:"덫",spray:"살충제",medkit:"메디킷",battery:"배터리",flashlight:"손전등",mask:"방독면",axe:"도끼",backpack:"가방",blueprint:"블루프린트",toolbox:"공구함",map:"지도",radio:"라디오"};
 let grids={},furn={},players={},items=[],me={},floor=1,bunker,defs={},keys=new Set(),near=null,ends=0,running=false,last=0,lastSend=0;
+let day=1,sanity=0,bounty=0,bountyLevel=1,bunkerStock={},weapons={},power=100,securityState="LOCKED";
+let hp=100,hunger=100,thirst=100;
+let bunkerPlayer={x:265,y:515};
+let bunkerKeys=new Set();
+let bunkerRunning=false;
+let bunkerNear=null;
 const roomsByFloor={
 1:[{n:"주방",x:80,y:120,w:800,h:520},{n:"거실",x:920,y:120,w:720,h:520},{n:"1층 화장실",x:1680,y:120,w:600,h:520},{n:"차고",x:80,y:720,w:800,h:640},{n:"벙커/복도",x:920,y:720,w:1360,h:640}],
 2:[{n:"침실",x:80,y:120,w:880,h:600},{n:"서재",x:1000,y:120,w:720,h:600},{n:"2층 화장실",x:1760,y:120,w:520,h:600},{n:"복도",x:80,y:800,w:2200,h:440}],
-3:[{n:"다락방",x:120,y:160,w:2160,h:1040}]};
+3:[{n:"다락방",x:400,y:260,w:1500,h:760}]};
 const stairSystems = {
   1: [
     { id:"stairs12", x:1480, y:760, w:150, h:130, to:2, spawnX:1495, spawnY:885, label:"2층 ↑" }
@@ -252,7 +259,7 @@ function findNear(){
 
   if(near){
     $("prompt").textContent=
-      `E · ${ICON[near.type]} 줍기 (${defs[near.type].slots}칸)`;
+      `E · ${ICON[near.type]} ${ITEM_NAME[near.type]} 줍기 (${defs[near.type].slots}칸)`;
   }
 }
 
@@ -329,10 +336,19 @@ function loop(t){
     lastSend=t;
   }
 
-  $("timer").textContent=Math.max(
+  const remaining=Math.max(
     0,
     Math.ceil((ends-Date.now())/1000)
   );
+
+  $("timer").textContent=remaining;
+
+  if(remaining<=0){
+    running=false;
+    ioClient.emit("finish-scavenge",()=>{});
+    draw();
+    return;
+  }
 
   draw();
   requestAnimationFrame(loop);
@@ -398,5 +414,374 @@ joyBase.addEventListener("lostpointercapture",()=>{
   resetJoystick();
 });
 $("mPick").onclick=pickup;$("mStore").onclick=store;$("mStair").onclick=stair;$("full").onclick=async()=>{if(!document.fullscreenElement)await document.documentElement.requestFullscreen();else await document.exitFullscreen()};
-ioClient.on("game-started",d=>{show("game");build();players={};d.players.forEach(p=>players[p.id]={...p});me={...players[myId],hands:[],stored:[]};floor=1;bunker=d.bunker;defs=d.itemDefs;items=d.items;ends=d.endsAt;renderSlots();running=true;last=performance.now();requestAnimationFrame(loop)});
+
+function updateStatusUI(){
+  $("dayLabel").textContent=`DAY ${day}`;
+  $("bunkerDay").textContent=`DAY ${day}`;
+  $("hpValue").textContent=`${hp} / 100`;
+  $("sanityValue").textContent=`${sanity} SP`;
+  $("hungerValue").textContent=`${Math.round(hunger)}%`;
+  $("thirstValue").textContent=`${Math.round(thirst)}%`;
+  $("statusDay").textContent=day;
+
+  let condition="안정";
+  if(hp<=0)condition="사망";
+  else if(hp<35)condition="위험";
+  else if(hunger<30)condition="배고픔";
+  else if(thirst<30)condition="목마름";
+
+  $("conditionValue").textContent=condition;
+}
+
+$("bookButton").onclick=()=>{
+  $("statusPanel").classList.toggle("hidden");
+  updateStatusUI();
+};
+
+const BUNKER_OBJECTS = [
+  {id:"weapons",label:"무기 보관함",x:150,y:90,w:70,h:120},
+  {id:"bed",label:"침대",x:150,y:220,w:150,h:85},
+  {id:"computer",label:"컴퓨터",x:150,y:315,w:105,h:55},
+  {id:"beans",label:"통조림",x:150,y:380,w:110,h:75},
+  {id:"medkit",label:"메디킷",x:360,y:500,w:120,h:50},
+  {id:"blueprints",label:"블루프린트",x:485,y:500,w:145,h:50},
+  {id:"shower",label:"샤워실",x:620,y:90,w:170,h:240},
+  {id:"power",label:"전력 공급",x:690,y:335,w:100,h:70},
+  {id:"water",label:"물",x:730,y:440,w:60,h:120},
+  {id:"vent",label:"환풍구",x:675,y:580,w:115,h:34},
+  {id:"stairs",label:"계단",x:250,y:565,w:380,h:85}
+];
+
+function resizeBunkerCanvas(){
+  const c=$("bunkerCanvas");
+  const dpr=devicePixelRatio||1;
+  c.width=innerWidth*dpr;
+  c.height=innerHeight*dpr;
+  c.getContext("2d").setTransform(dpr,0,0,dpr,0,0);
+}
+addEventListener("resize",resizeBunkerCanvas);
+
+function drawBunkerInterior(){
+  if(!bunkerRunning)return;
+
+  const c=$("bunkerCanvas");
+  const bctx=c.getContext("2d");
+  const vw=innerWidth,vh=innerHeight;
+
+  const worldW=940,worldH=720;
+  const camX=bunkerPlayer.x-vw/2;
+  const camY=bunkerPlayer.y-vh/2;
+
+  bctx.fillStyle="#b9ad96";
+  bctx.fillRect(0,0,vw,vh);
+
+  // concrete floor grid
+  bctx.strokeStyle="rgba(70,62,52,.13)";
+  bctx.lineWidth=1;
+  for(let x=-camX%60;x<vw;x+=60){
+    bctx.beginPath();bctx.moveTo(x,0);bctx.lineTo(x,vh);bctx.stroke();
+  }
+  for(let y=-camY%60;y<vh;y+=60){
+    bctx.beginPath();bctx.moveTo(0,y);bctx.lineTo(vw,y);bctx.stroke();
+  }
+
+  // outer bunker
+  bctx.fillStyle="#d1c6af";
+  bctx.fillRect(120-camX,60-camY,700,590);
+  bctx.strokeStyle="#171411";
+  bctx.lineWidth=7;
+  bctx.strokeRect(120-camX,60-camY,700,590);
+
+  // internal structures
+  BUNKER_OBJECTS.forEach(o=>{
+    bctx.fillStyle=
+      o.id==="shower"?"#b8cad0":
+      o.id==="power"?"#8d8d77":
+      o.id==="stairs"?"#88725b":
+      "#9c8465";
+
+    bctx.fillRect(o.x-camX,o.y-camY,o.w,o.h);
+    bctx.strokeStyle="#211a15";
+    bctx.lineWidth=3;
+    bctx.strokeRect(o.x-camX,o.y-camY,o.w,o.h);
+    bctx.fillStyle="#211a15";
+    bctx.font="bold 13px Malgun Gothic";
+    bctx.fillText(o.label,o.x-camX+7,o.y-camY+19);
+  });
+
+  // stairs lines
+  const st=BUNKER_OBJECTS.find(o=>o.id==="stairs");
+  bctx.strokeStyle="#d8c7a9";
+  for(let i=1;i<7;i++){
+    const yy=st.y-camY+(st.h/7)*i;
+    bctx.beginPath();
+    bctx.moveTo(st.x-camX+8,yy);
+    bctx.lineTo(st.x-camX+st.w-8,yy);
+    bctx.stroke();
+  }
+
+  // player
+  bctx.fillStyle=me.color||"#fff";
+  bctx.fillRect(vw/2-15,vh/2-15,30,30);
+  bctx.strokeStyle="#fff";
+  bctx.lineWidth=2;
+  bctx.strokeRect(vw/2-15,vh/2-15,30,30);
+
+  requestAnimationFrame(drawBunkerInterior);
+}
+
+function bunkerNearestObject(){
+  let result=null,best=90;
+  for(const o of BUNKER_OBJECTS){
+    const cx=o.x+o.w/2,cy=o.y+o.h/2;
+    const d=Math.hypot(bunkerPlayer.x-cx,bunkerPlayer.y-cy);
+    if(d<best){best=d;result=o}
+  }
+  bunkerNear=result;
+  $("bunkerPrompt").classList.toggle("hidden",!result);
+  if(result)$("bunkerPrompt").textContent=`E · ${result.label} 사용`;
+}
+
+function bunkerMoveLoop(){
+  if(!bunkerRunning)return;
+  let dx=(bunkerKeys.has("d")?1:0)-(bunkerKeys.has("a")?1:0);
+  let dy=(bunkerKeys.has("s")?1:0)-(bunkerKeys.has("w")?1:0);
+
+  if(Math.abs(joystickX)>.03||Math.abs(joystickY)>.03){
+    dx=joystickX;dy=joystickY;
+  }else if(dx&&dy){dx*=.707;dy*=.707}
+
+  bunkerPlayer.x=Math.max(145,Math.min(795,bunkerPlayer.x+dx*3.2));
+  bunkerPlayer.y=Math.max(85,Math.min(625,bunkerPlayer.y+dy*3.2));
+  bunkerNearestObject();
+  requestAnimationFrame(bunkerMoveLoop);
+}
+
+function openWeaponStorage(){
+  const names={axe:"🪓 도끼"};
+  const entries=Object.entries(weapons||{}).filter(([,count])=>count>0);
+
+  $("weaponList").innerHTML=
+    entries.length
+      ? entries.map(([type,count])=>`<div>${names[type]||type} × ${count}</div>`).join("")
+      : "<div>현재 보관된 무기가 없습니다.</div>";
+
+  $("weaponPanel").classList.remove("hidden");
+}
+
+$("weaponClose").onclick=()=>$("weaponPanel").classList.add("hidden");
+
+function computerHTML(tab){
+  if(tab==="cctv"){
+    return `
+      <h3>CCTV</h3>
+      <p>1층 카메라: ONLINE</p>
+      <p>2층 카메라: ONLINE</p>
+      <p>3층 카메라: ONLINE</p>
+      <p>현재 CCTV는 상태 확인용입니다.</p>
+    `;
+  }
+
+  if(tab==="security"){
+    return `
+      <h3>SECURITY</h3>
+      <p>Vault Door: <b>${securityState}</b></p>
+      <p>Power: <b>${power}%</b></p>
+      <p>Vent: <b>NORMAL</b></p>
+      <p>Exterior Sensors: <b>ONLINE</b></p>
+    `;
+  }
+
+  if(tab==="bounty"){
+    const pct=(bounty/3)*100;
+    return `
+      <h3>BOUNTY HUNTER</h3>
+      <div class="bounty-bar"><div class="bounty-fill" style="width:${pct}%"></div></div>
+      <p>게이지: ${bounty} / 3</p>
+      <p>Hunter Level: ${bountyLevel}</p>
+      ${
+        bounty>=3
+          ? '<p class="warning-text">WARNING: BOUNTY HUNTER INCOMING</p>'
+          : '<p>Status: NOT COMING</p>'
+      }
+    `;
+  }
+
+  const price={
+    battery:500,
+    beans:800,
+    water:800,
+    medkit:1500,
+    flashlight:2500,
+    backpack:7000,
+    mask:12000,
+    axe:18000,
+    blueprint:30000
+  };
+
+  return `
+    <h3>SANITY SHOP</h3>
+    <p>보유 Sanity: <b>${sanity} SP</b></p>
+    ${Object.entries(price).map(([type,p])=>`
+      <div class="shop-row">
+        <span>${ICON[type]} ${ITEM_NAME[type]} — ${p.toLocaleString()} SP</span>
+        <button data-buy="${type}">구매</button>
+      </div>
+    `).join("")}
+  `;
+}
+
+function openComputer(){
+  $("computerPanel").classList.remove("hidden");
+  $("computerClose").classList.remove("hidden");
+  $("computerContent").innerHTML=computerHTML("cctv");
+}
+
+$("computerClose").onclick=()=>{
+  $("computerPanel").classList.add("hidden");
+  $("computerClose").classList.add("hidden");
+};
+
+document.querySelector(".computer-tabs").onclick=e=>{
+  const tab=e.target.dataset.tab;
+  if(!tab)return;
+  $("computerContent").innerHTML=computerHTML(tab);
+};
+
+$("computerContent").onclick=e=>{
+  const type=e.target.dataset.buy;
+  if(!type)return;
+
+  ioClient.emit("buy-sanity-item",type,r=>{
+    if(!r.ok)return toast(r.message);
+    sanity=r.sanity;
+    bunkerStock=r.bunkerStock;
+    weapons=r.weapons;
+    updateStatusUI();
+    $("computerContent").innerHTML=computerHTML("shop");
+    toast("구매 완료");
+  });
+};
+
+function interactBunker(){
+  if(!bunkerNear)return;
+
+  if(bunkerNear.id==="computer"){
+    openComputer();
+    return;
+  }
+
+  if(bunkerNear.id==="weapons"){
+    openWeaponStorage();
+    return;
+  }
+
+  if(bunkerNear.id==="beans"){
+    toast(`통조림 ${bunkerStock.beans||0}개`);
+    return;
+  }
+
+  if(bunkerNear.id==="water"){
+    toast(`물 ${bunkerStock.water||0}개`);
+    return;
+  }
+
+  if(bunkerNear.id==="medkit"){
+    toast(`메디킷 ${bunkerStock.medkit||0}개`);
+    return;
+  }
+
+  if(bunkerNear.id==="blueprints"){
+    toast(`블루프린트 ${bunkerStock.blueprint||0}개`);
+    return;
+  }
+
+  if(bunkerNear.id==="power"){
+    toast(`전력 ${power}%`);
+    return;
+  }
+
+  toast(`${bunkerNear.label}`);
+}
+
+addEventListener("keydown",e=>{
+  if(!bunkerRunning)return;
+  const k=e.key.toLowerCase();
+  bunkerKeys.add(k);
+  if(k==="e")interactBunker();
+});
+addEventListener("keyup",e=>{
+  if(bunkerRunning)bunkerKeys.delete(e.key.toLowerCase());
+});
+
+function enterBunkerScene(){
+  $("bunkerUI").classList.remove("hidden");
+  $("fadeOverlay").classList.remove("hidden");
+  resizeBunkerCanvas();
+
+  // 카메라는 벙커 계단 위에서 시작
+  bunkerPlayer.x=280;
+  bunkerPlayer.y=595;
+  bunkerRunning=true;
+
+  drawBunkerInterior();
+  bunkerMoveLoop();
+
+  requestAnimationFrame(()=>{
+    setTimeout(()=>{
+      $("fadeOverlay").style.opacity="0";
+      setTimeout(()=>$("fadeOverlay").classList.add("hidden"),1300);
+    },350);
+  });
+}
+
+ioClient.on("scavenge-result",d=>{
+  day=d.day||day;
+  sanity=d.sanity??sanity;
+  bounty=d.bounty??bounty;
+  bountyLevel=d.bountyLevel??bountyLevel;
+  bunkerStock=d.bunkerStock||bunkerStock;
+  weapons=d.weapons||weapons;
+  power=d.power??power;
+  securityState=d.security||securityState;
+  updateStatusUI();
+
+  $("fadeOverlay").style.opacity="1";
+  $("fadeOverlay").classList.remove("hidden");
+
+  if(!d.alive){
+    hp=0;
+    updateStatusUI();
+    setTimeout(()=>{
+      document.body.innerHTML=`
+        <div style="
+          position:fixed;inset:0;background:#000;color:#d94b42;
+          display:grid;place-items:center;text-align:center;
+          font-family:Arial,sans-serif">
+          <div>
+            <div style="font-size:64px;font-weight:900">YOU DIED</div>
+            <p style="color:#ddd">시간 안에 벙커에 들어가지 못했습니다.</p>
+          </div>
+        </div>`;
+    },700);
+    return;
+  }
+
+  setTimeout(enterBunkerScene,650);
+});
+
+ioClient.on("bunker-state",d=>{
+  day=d.day||day;
+  sanity=d.sanity??sanity;
+  bounty=d.bounty??bounty;
+  bountyLevel=d.bountyLevel??bountyLevel;
+  bunkerStock=d.bunkerStock||bunkerStock;
+  weapons=d.weapons||weapons;
+  power=d.power??power;
+  securityState=d.security||securityState;
+  updateStatusUI();
+});
+ioClient.on("game-started",d=>{show("game");build();players={};d.players.forEach(p=>players[p.id]={...p});me={...players[myId],hands:[],stored:[]};floor=1;bunker=d.bunker;defs=d.itemDefs;items=d.items;ends=d.endsAt;
+day=d.day||1;sanity=d.sanity||0;bounty=d.bounty||0;bountyLevel=d.bountyLevel||1;bunkerStock=d.bunkerStock||{};weapons=d.weapons||{};power=d.power??100;securityState=d.security||"LOCKED";
+updateStatusUI();$("timer").textContent="60";renderSlots();running=true;last=performance.now();requestAnimationFrame(loop)});
 ioClient.on("player-moved",d=>{if(players[d.id])Object.assign(players[d.id],d)});ioClient.on("item-taken",d=>{let i=items.find(x=>x.id===d.itemId);if(i)i.taken=true;if(d.playerId===myId){me.hands=d.hands;renderSlots()}});ioClient.on("items-deposited",d=>{if(d.playerId===myId){me.hands=d.hands;me.stored=d.stored;renderSlots()}});
