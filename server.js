@@ -9,6 +9,10 @@ app.use(express.static(path.join(__dirname,"public")));
 const rooms=new Map(), socketRoom=new Map();
 const COLORS=["#ff6b6b","#4dabf7","#69db7c","#ffd43b","#da77f2","#ffa94d","#38d9a9","#f06595"];
 const LIMIT=4, ROUND=60000;
+
+// v10: DAY는 탐사 횟수가 아니라 시간으로 진행.
+// 현재 2분 = 게임 내 1일. 나중에 이 숫자만 바꾸면 됨.
+const DAY_LENGTH_MS=120000;
 const DEFS={
  beans:{slots:1},water:{slots:1},soap:{slots:1},tape:{slots:1},trap:{slots:1},spray:{slots:1},
  medkit:{slots:2},battery:{slots:2},flashlight:{slots:2},mask:{slots:2},axe:{slots:3},
@@ -79,10 +83,63 @@ function join(s,r,name,cb){
  name=String(name||"").trim().slice(0,14);if(!name)return cb({ok:false,message:"닉네임 입력"});
  const used=new Set([...r.players.values()].map(p=>p.color));
  const color=COLORS.find(c=>!used.has(c))||pick(COLORS);
- const p={id:s.id,nickname:name,ready:false,color,floor:1,x:1180,y:980,hands:[],stored:[],bunkerX:330,bunkerY:560,inBunker:false};
+ const p={id:s.id,nickname:name,ready:false,color,floor:1,x:1180,y:980,hands:[],stored:[],bunkerX:330,bunkerY:560,inBunker:false,hp:100,hunger:100,thirst:100,equipped:null,inExpedition:false,expeditionX:260,expeditionY:900};
  r.players.set(s.id,p);socketRoom.set(s.id,r.code);s.join(r.code);cb({ok:true,room:view(r),myId:s.id});emit(r)
 }
 
+
+const GROCERY_ITEM_TYPES=["beans","water","soap","tape","battery","medkit","flashlight"];
+
+const GROCERY_POINTS=[
+ {x:250,y:180},{x:400,y:180},{x:550,y:180},{x:700,y:180},{x:850,y:180},
+ {x:300,y:340},{x:470,y:340},{x:640,y:340},{x:810,y:340},{x:980,y:340},
+ {x:250,y:520},{x:430,y:520},{x:610,y:520},{x:790,y:520},{x:970,y:520},
+ {x:300,y:700},{x:480,y:700},{x:660,y:700},{x:840,y:700},{x:1020,y:700}
+];
+
+function makeGroceryItems(){
+ const points=shuffle(GROCERY_POINTS);
+ const types=[
+   "beans","beans","beans","beans","beans",
+   "water","water","water","water","water",
+   "soap","soap",
+   "tape","tape",
+   "battery","battery",
+   "medkit","flashlight"
+ ];
+ return types.map((type,i)=>({
+   id:`g-${Date.now()}-${i}-${Math.random().toString(36).slice(2,6)}`,
+   type,
+   slots:DEFS[type]?.slots||1,
+   x:points[i%points.length].x,
+   y:points[i%points.length].y,
+   taken:false
+ }));
+}
+
+const MUTANT_SPAWN_POINTS=[
+  {x:1040,y:170},
+  {x:1000,y:560},
+  {x:900,y:810},
+  {x:560,y:610},
+  {x:380,y:390},
+  {x:760,y:380}
+];
+
+function makeMutants(){
+  const points=shuffle(MUTANT_SPAWN_POINTS);
+
+  return points.slice(0,4).map((point,index)=>({
+    id:`mutant-${Date.now()}-${index}-${Math.random().toString(36).slice(2,6)}`,
+    x:point.x,
+    y:point.y,
+    hp:70,
+    maxHp:70,
+    alive:true,
+    targetId:null,
+    lastAttackAt:0
+  }));
+}
 io.on("connection",s=>{
  s.emit("room-list",list());
  s.on("create-room",(d,cb=()=>{})=>{
@@ -102,10 +159,12 @@ io.on("connection",s=>{
     bounty:0,
     bountyLevel:1,
     bunkerStock:{beans:0,water:0,medkit:0,battery:0,flashlight:0,mask:0,axe:0,backpack:0,blueprint:0,toolbox:0,map:0,radio:0},
-    weapons:{axe:0},
+    weapons:{woodenStick:1,axe:0},
     power:100,
     security:"LOCKED",
-    messages:[]
+    messages:[],
+    dayStartedAt:Date.now(),
+    expeditionItems:[]
   };
   rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id});emit(r)
  });
@@ -123,6 +182,8 @@ io.on("connection",s=>{
     itemDefs:DEFS,
     handLimit:LIMIT,
     day:r.day,
+    dayStartedAt:r.dayStartedAt,
+    dayLengthMs:DAY_LENGTH_MS,
     sanity:r.sanity,
     bounty:r.bounty,
     bountyLevel:r.bountyLevel,
@@ -225,7 +286,9 @@ io.on("connection",s=>{
 
  s.on("get-messages",(cb=()=>{})=>{
   const r=rooms.get(socketRoom.get(s.id));
-  if(!r)return cb({ok:false,messages:[]});
+  if(!r)return cb({ok:false,messages:[],
+    dayStartedAt:Date.now(),
+    expeditionItems:[]});
 
   cb({
     ok:true,
@@ -265,6 +328,178 @@ io.on("connection",s=>{
  });
 
 
+
+ s.on("start-expedition",(cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
+
+  // 탐사 갈 때마다 식료품점 아이템과 돌연변이를 완전 리셋
+  r.expeditionItems=makeGroceryItems();
+  r.expeditionMutants=makeMutants();
+
+  p.inBunker=false;
+  p.inExpedition=true;
+  p.expeditionX=250;
+  p.expeditionY=850;
+  p.hands=[];
+
+  cb({
+    ok:true,
+    day:r.day,
+    items:r.expeditionItems,
+    mutants:r.expeditionMutants,
+    player:{
+      id:p.id,
+      nickname:p.nickname,
+      color:p.color,
+      x:p.expeditionX,
+      y:p.expeditionY,
+      hands:p.hands,
+      equipped:p.equipped
+    }
+  });
+
+  io.to(r.code).emit("expedition-player-entered",{
+    id:p.id,nickname:p.nickname,color:p.color,
+    x:p.expeditionX,y:p.expeditionY
+  });
+ });
+
+ s.on("expedition-move",(d)=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p||!p.inExpedition)return;
+
+  const x=Number(d?.x),y=Number(d?.y);
+  if(!Number.isFinite(x)||!Number.isFinite(y))return;
+
+  p.expeditionX=Math.max(35,Math.min(1165,x));
+  p.expeditionY=Math.max(35,Math.min(925,y));
+
+  s.to(r.code).emit("expedition-player-moved",{
+    id:p.id,x:p.expeditionX,y:p.expeditionY,
+    nickname:p.nickname,color:p.color
+  });
+ });
+
+ s.on("take-expedition-item",(itemId,cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p||!p.inExpedition)return cb({ok:false,message:"탐사 중이 아닙니다."});
+
+  const item=r.expeditionItems.find(i=>i.id===itemId);
+  if(!item||item.taken)return cb({ok:false,message:"이미 가져간 아이템입니다."});
+
+  const used=p.hands.reduce((sum,type)=>sum+(DEFS[type]?.slots||1),0);
+  const need=DEFS[item.type]?.slots||1;
+  if(used+need>LIMIT)return cb({ok:false,message:`손 공간 부족 (${need}칸 필요)`});
+
+  if(Math.hypot((p.expeditionX+15)-item.x,(p.expeditionY+15)-item.y)>85){
+    return cb({ok:false,message:"아이템과 너무 멉니다."});
+  }
+
+  item.taken=true;
+  p.hands.push(item.type);
+
+  io.to(r.code).emit("expedition-item-taken",{
+    itemId:item.id,
+    playerId:p.id,
+    hands:p.hands
+  });
+
+  cb({ok:true,hands:p.hands});
+ });
+
+
+ s.on("attack-mutant",(data,cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p||!p.inExpedition)return cb({ok:false,message:"탐사 중이 아닙니다."});
+  if(!p.equipped)return cb({ok:false,message:"무기를 장착하세요."});
+
+  const mutant=r.expeditionMutants.find(m=>m.id===data?.mutantId);
+  if(!mutant||!mutant.alive)return cb({ok:false,message:"대상이 없습니다."});
+
+  const distance=Math.hypot(
+    (p.expeditionX+15)-(mutant.x+18),
+    (p.expeditionY+15)-(mutant.y+18)
+  );
+
+  if(distance>95)return cb({ok:false,message:"돌연변이가 너무 멉니다."});
+
+  const damage=p.equipped==="axe" ? 45 : 24;
+  mutant.hp=Math.max(0,mutant.hp-damage);
+
+  if(mutant.hp<=0){
+    mutant.alive=false;
+  }
+
+  io.to(r.code).emit("mutant-hit",{
+    id:mutant.id,
+    hp:mutant.hp,
+    maxHp:mutant.maxHp,
+    alive:mutant.alive,
+    attackerId:p.id,
+    damage
+  });
+
+  cb({
+    ok:true,
+    damage,
+    killed:!mutant.alive,
+    hp:mutant.hp
+  });
+ });
+
+ s.on("return-from-expedition",(cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p||!p.inExpedition)return cb({ok:false,message:"탐사 중이 아닙니다."});
+
+  for(const type of p.hands){
+    r.bunkerStock[type]=(r.bunkerStock[type]||0)+1;
+    if(type==="axe")r.weapons.axe=(r.weapons.axe||0)+1;
+  }
+
+  p.stored.push(...p.hands);
+  p.hands=[];
+  p.inExpedition=false;
+  p.inBunker=true;
+  p.bunkerX=330;
+  p.bunkerY=560;
+
+  // 중요: 귀환 자체로 DAY는 증가하지 않음
+  io.to(r.code).emit("expedition-player-left",{id:p.id});
+
+  cb({
+    ok:true,
+    day:r.day,
+    bunkerStock:r.bunkerStock,
+    weapons:r.weapons,
+    stats:{hp:p.hp,hunger:p.hunger,thirst:p.thirst},
+    player:{x:p.bunkerX,y:p.bunkerY}
+  });
+ });
+
+ s.on("equip-weapon",(weapon,cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
+
+  const allowed=new Set(["woodenStick","axe"]);
+  if(!allowed.has(weapon))return cb({ok:false,message:"장착할 수 없는 무기입니다."});
+
+  if((r.weapons[weapon]||0)<=0){
+    return cb({ok:false,message:"무기고에 해당 무기가 없습니다."});
+  }
+
+  p.equipped=weapon;
+
+  io.to(r.code).emit("player-equipped",{id:p.id,weapon});
+  cb({ok:true,weapon});
+ });
+
+ s.on("swing-weapon",()=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p||!p.equipped)return;
+  io.to(r.code).emit("weapon-swung",{id:p.id,weapon:p.equipped,time:Date.now()});
+ });
+
  s.on("consume-bunker-item",(type,cb=()=>{})=>{
   const r=rooms.get(socketRoom.get(s.id));
   if(!r)return cb({ok:false,message:"방 없음"});
@@ -276,6 +511,10 @@ io.on("connection",s=>{
   if(count<=0)return cb({ok:false,message:"재고가 없습니다."});
 
   r.bunkerStock[type]=count-1;
+
+  if(type==="water")p.thirst=Math.min(100,(p.thirst??100)+70);
+  if(type==="beans")p.hunger=Math.min(100,(p.hunger??100)+50);
+  if(type==="medkit")p.hp=100;
 
   io.to(r.code).emit("bunker-state",{
     day:r.day,
@@ -291,7 +530,8 @@ io.on("connection",s=>{
   cb({
     ok:true,
     type,
-    bunkerStock:r.bunkerStock
+    bunkerStock:r.bunkerStock,
+    stats:{hp:p.hp,hunger:p.hunger,thirst:p.thirst}
   });
  });
 
@@ -334,4 +574,115 @@ io.on("connection",s=>{
  });
  s.on("leave-room",(cb=()=>{})=>{leave(s);cb({ok:true})});s.on("disconnect",()=>leave(s))
 });
+
+
+// =========================================================
+// 탐사 돌연변이 AI
+// =========================================================
+setInterval(()=>{
+  const now=Date.now();
+
+  for(const r of rooms.values()){
+    const explorers=[...r.players.values()].filter(p=>p.inExpedition && (p.hp??100)>0);
+    if(!explorers.length)continue;
+
+    for(const mutant of r.expeditionMutants||[]){
+      if(!mutant.alive)continue;
+
+      let target=null;
+      let best=Infinity;
+
+      for(const p of explorers){
+        const d=Math.hypot(
+          (p.expeditionX+15)-(mutant.x+18),
+          (p.expeditionY+15)-(mutant.y+18)
+        );
+
+        if(d<best){
+          best=d;
+          target=p;
+        }
+      }
+
+      // 390px 안으로 들어오면 추적
+      if(target && best<=390){
+        mutant.targetId=target.id;
+
+        // 플레이어 방향으로 이동
+        if(best>45){
+          const dx=(target.expeditionX-mutant.x)/best;
+          const dy=(target.expeditionY-mutant.y)/best;
+
+          mutant.x=Math.max(35,Math.min(1125,mutant.x+dx*10));
+          mutant.y=Math.max(35,Math.min(885,mutant.y+dy*10));
+        }
+
+        // 근접 공격
+        if(best<=52 && now-mutant.lastAttackAt>=900){
+          mutant.lastAttackAt=now;
+          target.hp=Math.max(0,(target.hp??100)-12);
+
+          io.to(r.code).emit("explorer-damaged",{
+            playerId:target.id,
+            hp:target.hp,
+            mutantId:mutant.id,
+            damage:12
+          });
+        }
+      }else{
+        mutant.targetId=null;
+      }
+
+      io.to(r.code).emit("mutant-moved",{
+        id:mutant.id,
+        x:mutant.x,
+        y:mutant.y,
+        hp:mutant.hp,
+        alive:mutant.alive,
+        targetId:mutant.targetId
+      });
+    }
+  }
+},120);
+
+// =========================================================
+// 서버 기준 DAY 시계
+// =========================================================
+setInterval(()=>{
+  const now=Date.now();
+
+  for(const r of rooms.values()){
+    const elapsed=now-r.dayStartedAt;
+
+    if(elapsed<DAY_LENGTH_MS)continue;
+
+    const passed=Math.floor(elapsed/DAY_LENGTH_MS);
+
+    r.day+=passed;
+    r.dayStartedAt+=passed*DAY_LENGTH_MS;
+
+    // 하루가 지나갈 때마다 모든 생존자의 허기/갈증 감소
+    for(const p of r.players.values()){
+      p.hunger=Math.max(0,(p.hunger??100)-18*passed);
+      p.thirst=Math.max(0,(p.thirst??100)-25*passed);
+
+      if(p.hunger<=0 || p.thirst<=0){
+        p.hp=Math.max(0,(p.hp??100)-10*passed);
+      }
+    }
+
+    io.to(r.code).emit("day-changed",{
+      day:r.day,
+      dayStartedAt:r.dayStartedAt,
+      dayLengthMs:DAY_LENGTH_MS,
+      players:[...r.players.values()].map(p=>({
+        id:p.id,
+        hp:p.hp,
+        hunger:p.hunger,
+        thirst:p.thirst
+      }))
+    });
+  }
+},1000);
+
 server.listen(process.env.PORT||3000,"0.0.0.0");
