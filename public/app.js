@@ -57,7 +57,21 @@ const stairSystems = {
 let stairCooldownUntil = 0;
 let joystickX = 0;
 let joystickY = 0;
-function resize(){const d=devicePixelRatio||1;canvas.width=innerWidth*d;canvas.height=innerHeight*d;ctx.setTransform(d,0,0,d,0,0)}addEventListener("resize",resize);resize();
+function resize(){
+  const d=devicePixelRatio||1;
+  const vw=window.visualViewport?.width||innerWidth;
+  const vh=window.visualViewport?.height||innerHeight;
+  canvas.width=Math.max(1,Math.round(vw*d));
+  canvas.height=Math.max(1,Math.round(vh*d));
+  canvas.style.width=`${vw}px`;
+  canvas.style.height=`${vh}px`;
+  ctx.setTransform(d,0,0,d,0,0);
+}
+addEventListener("resize",resize);
+if(window.visualViewport){
+  window.visualViewport.addEventListener("resize",resize);
+}
+resize();
 function empty(){return Array.from({length:ROWS},()=>Array(COLS).fill(0))}function wall(g,x,y,w,h){for(let r=y;r<y+h;r++)for(let c=x;c<x+w;c++)if(g[r])g[r][c]=1}function door(g,x,y,w=1,h=1){for(let r=y;r<y+h;r++)for(let c=x;c<x+w;c++)if(g[r])g[r][c]=0}
 function furniture(fl,x,y,w,h,label,color){furn[fl].push({x:x*T,y:y*T,w:w*T,h:h*T,label,color});wall(grids[fl],x,y,w,h)}
 function build(){
@@ -147,8 +161,8 @@ function drawStair(camX,camY){
 }
 
 function draw(){
-  const w=innerWidth;
-  const h=innerHeight;
+  const w=window.visualViewport?.width||innerWidth;
+  const h=window.visualViewport?.height||innerHeight;
   const camX=me.x+15-w/2;
   const camY=me.y+15-h/2;
 
@@ -534,18 +548,27 @@ function bunkerStockCount(id){
 function resizeBunkerCanvas(){
   const c=$("bunkerCanvas");
   const dpr=devicePixelRatio||1;
-  c.width=innerWidth*dpr;
-  c.height=innerHeight*dpr;
+  const vw=window.visualViewport?.width||innerWidth;
+  const vh=window.visualViewport?.height||innerHeight;
+  c.width=Math.max(1,Math.round(vw*dpr));
+  c.height=Math.max(1,Math.round(vh*dpr));
+  c.style.width=`${vw}px`;
+  c.style.height=`${vh}px`;
   c.getContext("2d").setTransform(dpr,0,0,dpr,0,0);
 }
 addEventListener("resize",resizeBunkerCanvas);
+if(window.visualViewport){
+  window.visualViewport.addEventListener("resize",()=>{
+    if(bunkerRunning)resizeBunkerCanvas();
+  });
+}
 
 function drawBunkerInterior(){
   if(!bunkerRunning)return;
 
   const c=$("bunkerCanvas");
   const bctx=c.getContext("2d");
-  const vw=innerWidth,vh=innerHeight;
+  const vw=window.visualViewport?.width||innerWidth, vh=window.visualViewport?.height||innerHeight;
 
   // 확대: 플레이어 주변만 보이게 함
   const scale=1.55;
@@ -979,6 +1002,7 @@ addEventListener("keyup",e=>{
 });
 
 function enterBunkerScene(){
+  document.body.classList.remove("chat-open");
   $("bunkerUI").classList.remove("hidden");
   $("fadeOverlay").classList.remove("hidden");
   resizeBunkerCanvas();
@@ -997,13 +1021,18 @@ function enterBunkerScene(){
   const mobileControls=document.querySelector(".mobile");
   if(mobileControls){
     mobileControls.style.setProperty("display","block","important");
-    mobileControls.style.setProperty("z-index","125","important");
+    mobileControls.style.setProperty("z-index","140","important");
   }
 
   const joystickBase=$("joystickBase");
   if(joystickBase){
     joystickBase.style.setProperty("display","block","important");
   }
+
+  $("bookButton").style.setProperty("display","block","important");
+  $("bookButton").style.setProperty("z-index","140","important");
+  $("messageButton").style.setProperty("display","block","important");
+  $("messageButton").style.setProperty("z-index","140","important");
 
   ioClient.emit("get-bunker-players",r=>{
     if(r?.ok){
@@ -1070,13 +1099,16 @@ $("messageButton").onclick=()=>{
     $("messageList").innerHTML="";
     r.messages.forEach(renderChatMessage);
     $("messagePanel").classList.remove("hidden");
+    document.body.classList.add("chat-open");
+    resetJoystick();
     scrollChatBottom();
-    $("messageInput").focus();
+    setTimeout(()=>$("messageInput").focus(),80);
   });
 };
 
 $("messageClose").onclick=()=>{
   $("messagePanel").classList.add("hidden");
+  document.body.classList.remove("chat-open");
 };
 
 function sendTeamMessage(){
@@ -1162,6 +1194,28 @@ ioClient.on("bunker-state",d=>{
   securityState=d.security||securityState;
   updateStatusUI();
 });
+
+function applyMobileControlsVisibility(){
+  const touchDevice=
+    navigator.maxTouchPoints>0 ||
+    "ontouchstart" in window ||
+    matchMedia("(pointer: coarse)").matches;
+
+  const mobile=document.querySelector(".mobile");
+  if(!mobile)return;
+
+  if(touchDevice){
+    mobile.style.setProperty("display","block","important");
+    mobile.style.setProperty("z-index","140","important");
+  }
+}
+
+applyMobileControlsVisibility();
+addEventListener("resize",applyMobileControlsVisibility);
+if(window.visualViewport){
+  window.visualViewport.addEventListener("resize",applyMobileControlsVisibility);
+}
+
 ioClient.on("game-started",d=>{show("game");
 $("bookButton").classList.add("hidden");
 $("messageButton").classList.add("hidden");
