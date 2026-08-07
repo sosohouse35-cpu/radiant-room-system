@@ -158,7 +158,8 @@ io.on("connection",s=>{
     cy>=BUNKER.y && cy<=BUNKER.y+BUNKER.h;
 
   if(alive){
-    r.day+=1;
+    // 첫 수집 종료 후 벙커에 들어와도 DAY 1을 유지합니다.
+    // 이후 실제 "하루 넘기기" 기능이 추가될 때 day를 증가시킵니다.
     r.sanity+=10;
     r.bounty=Math.min(3,r.bounty+1);
   }
@@ -176,6 +177,37 @@ io.on("connection",s=>{
   });
 
   cb({ok:true,alive});
+ });
+
+
+ s.on("consume-bunker-item",(type,cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id));
+  if(!r)return cb({ok:false,message:"방 없음"});
+
+  const consumable=new Set(["water","beans","medkit"]);
+  if(!consumable.has(type))return cb({ok:false,message:"사용할 수 없는 물품입니다."});
+
+  const count=r.bunkerStock[type]||0;
+  if(count<=0)return cb({ok:false,message:"재고가 없습니다."});
+
+  r.bunkerStock[type]=count-1;
+
+  io.to(r.code).emit("bunker-state",{
+    day:r.day,
+    sanity:r.sanity,
+    bounty:r.bounty,
+    bountyLevel:r.bountyLevel,
+    bunkerStock:r.bunkerStock,
+    weapons:r.weapons,
+    power:r.power,
+    security:r.security
+  });
+
+  cb({
+    ok:true,
+    type,
+    bunkerStock:r.bunkerStock
+  });
  });
 
  s.on("buy-sanity-item",(type,cb=()=>{})=>{
