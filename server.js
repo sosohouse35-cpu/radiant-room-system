@@ -56,8 +56,21 @@ function makeItems(){
 }
 function leave(s){
  const c=socketRoom.get(s.id),r=rooms.get(c); if(!c||!r)return;
- socketRoom.delete(s.id);s.leave(c);r.players.delete(s.id);
- if(!r.players.size){rooms.delete(c);io.emit("room-list",list());return}
+ socketRoom.delete(s.id);
+ s.leave(c);
+
+ const leavingPlayer=r.players.get(s.id);
+ if(leavingPlayer){
+   io.to(c).emit("bunker-player-left",{id:s.id});
+ }
+
+ r.players.delete(s.id);
+
+ if(!r.players.size){
+   rooms.delete(c);
+   io.emit("room-list",list());
+   return
+ }
  if(r.hostId===s.id){r.hostId=r.players.keys().next().value;r.players.get(r.hostId).ready=true} emit(r)
 }
 function join(s,r,name,cb){
@@ -91,7 +104,8 @@ io.on("connection",s=>{
     bunkerStock:{beans:0,water:0,medkit:0,battery:0,flashlight:0,mask:0,axe:0,backpack:0,blueprint:0,toolbox:0,map:0,radio:0},
     weapons:{axe:0},
     power:100,
-    security:"LOCKED"
+    security:"LOCKED",
+    messages:[]
   };
   rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id});emit(r)
  });
@@ -208,19 +222,48 @@ io.on("connection",s=>{
   });
  });
 
+
  s.on("get-messages",(cb=()=>{})=>{
   const r=rooms.get(socketRoom.get(s.id));
   if(!r)return cb({ok:false,messages:[]});
-  const messages=[];
-  messages.push({title:`DAY ${r.day}`,body:"벙커 시스템 정상 작동 중"});
-  messages.push({title:"SECURITY",body:`문 상태: ${r.security} · 전력 ${r.power}%`});
-  if(r.bounty>=3){
-    messages.push({title:"WARNING",body:`Bounty Hunter Level ${r.bountyLevel} 접근 경고`});
-  }else{
-    messages.push({title:"BOUNTY",body:`Bounty Hunter 게이지 ${r.bounty}/3`});
-  }
-  cb({ok:true,messages});
+
+  cb({
+    ok:true,
+    messages:r.messages.slice(-100)
+  });
  });
+
+ s.on("send-message",(text,cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id));
+  const p=r?.players.get(s.id);
+
+  if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
+
+  const safe=String(text??"")
+    .replace(/[<>]/g,"")
+    .trim()
+    .slice(0,180);
+
+  if(!safe)return cb({ok:false,message:"메시지를 입력하세요."});
+
+  const message={
+    id:`m-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+    playerId:p.id,
+    nickname:p.nickname,
+    text:safe,
+    time:Date.now()
+  };
+
+  r.messages.push(message);
+
+  if(r.messages.length>100){
+    r.messages.splice(0,r.messages.length-100);
+  }
+
+  io.to(r.code).emit("team-message",message);
+  cb({ok:true});
+ });
+
 
  s.on("consume-bunker-item",(type,cb=()=>{})=>{
   const r=rooms.get(socketRoom.get(s.id));
