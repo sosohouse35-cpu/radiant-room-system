@@ -234,3 +234,80 @@
   top:64px;
 }
 
+
+
+/* v7 */
+.scavenge-time{
+  display:flex;
+  align-items:baseline;
+  gap:5px;
+}
+.scavenge-time b{
+  font-size:32px;
+  color:#758b1c;
+}
+
+.message-button{
+  position:fixed;
+  right:14px;
+  top:118px;
+  z-index:76;
+  width:44px;
+  min-height:44px;
+  padding:0;
+  font-size:21px;
+  background:rgba(255,248,225,.96);
+  color:#28221b;
+}
+
+.message-panel{
+  position:fixed;
+  right:64px;
+  top:116px;
+  z-index:88;
+  width:min(360px,calc(100vw - 80px));
+  max-height:58vh;
+  overflow:auto;
+  padding:12px;
+  background:rgba(20,22,19,.97);
+  color:#f3efdf;
+  border:1px solid #69725e;
+  box-shadow:0 10px 35px rgba(0,0,0,.4);
+}
+.message-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:8px;
+}
+.message-head strong{color:#d6f055}
+.message-head button{min-height:32px}
+.message-card{
+  padding:10px;
+  margin:7px 0;
+  border:1px solid rgba(255,255,255,.1);
+  background:#121611;
+}
+.message-card b{display:block;color:#f1a640;margin-bottom:4px}
+
+.bunker-prompt{
+  cursor:pointer;
+  min-height:44px;
+}
+
+@media(max-width:760px),(hover:none) and (pointer:coarse){
+  /* 벙커에서도 조이스틱을 확실하게 유지 */
+  .bunker-ui:not(.hidden) ~ .mobile,
+  .mobile{
+    display:block !important;
+  }
+  .bunker-prompt{
+    bottom:205px;
+  }
+  .message-panel{
+    right:10px;
+    top:170px;
+    width:calc(100vw - 20px);
+  }
+}
+
