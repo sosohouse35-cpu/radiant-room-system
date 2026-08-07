@@ -43,10 +43,21 @@
   <button id="messageButton" class="message-button hidden" type="button">✉️</button>
 <div id="messagePanel" class="message-panel hidden">
   <div class="message-head">
-    <strong>MESSAGES</strong>
+    <strong>TEAM CHAT</strong>
     <button id="messageClose" type="button">×</button>
   </div>
-  <div id="messageList"></div>
+
+  <div id="messageList" class="chat-list"></div>
+
+  <div class="chat-compose">
+    <input
+      id="messageInput"
+      maxlength="180"
+      autocomplete="off"
+      placeholder="팀원에게 메시지..."
+    >
+    <button id="messageSend" type="button">전송</button>
+  </div>
 </div>
 
 <div class="bunker-topbar">
