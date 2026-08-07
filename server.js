@@ -8,7 +8,7 @@ app.use(express.static(path.join(__dirname,"public")));
 
 const rooms=new Map(), socketRoom=new Map();
 const COLORS=["#ff6b6b","#4dabf7","#69db7c","#ffd43b","#da77f2","#ffa94d","#38d9a9","#f06595"];
-const LIMIT=4, ROUND=95000;
+const LIMIT=4, ROUND=60000;
 const DEFS={
  beans:{slots:1},water:{slots:1},soap:{slots:1},tape:{slots:1},trap:{slots:1},spray:{slots:1},
  medkit:{slots:2},battery:{slots:2},flashlight:{slots:2},mask:{slots:2},axe:{slots:3},
@@ -75,7 +75,24 @@ io.on("connection",s=>{
  s.on("create-room",(d,cb=()=>{})=>{
   const c=code(),p={id:s.id,nickname:String(d.nickname||"").trim().slice(0,14),ready:true,color:COLORS[0],floor:1,x:1180,y:980,hands:[],stored:[]};
   if(!p.nickname||!String(d.roomName||"").trim())return cb({ok:false,message:"입력 확인"});
-  const r={code:c,name:String(d.roomName).trim().slice(0,24),maxPlayers:Math.max(1,Math.min(8,+d.maxPlayers||4)),hostId:s.id,status:"waiting",players:new Map([[s.id,p]]),items:[],endsAt:0};
+  const r={
+    code:c,
+    name:String(d.roomName).trim().slice(0,24),
+    maxPlayers:Math.max(1,Math.min(8,+d.maxPlayers||4)),
+    hostId:s.id,
+    status:"waiting",
+    players:new Map([[s.id,p]]),
+    items:[],
+    endsAt:0,
+    day:1,
+    sanity:0,
+    bounty:0,
+    bountyLevel:1,
+    bunkerStock:{beans:0,water:0,medkit:0,battery:0,flashlight:0,mask:0,axe:0,backpack:0,blueprint:0,toolbox:0,map:0,radio:0},
+    weapons:{axe:0},
+    power:100,
+    security:"LOCKED"
+  };
   rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id});emit(r)
  });
  s.on("join-room",(d,cb=()=>{})=>{const r=rooms.get(String(d.code||"").toUpperCase());if(!r)return cb({ok:false,message:"방 없음"});join(s,r,d.nickname,cb)});
@@ -85,7 +102,22 @@ io.on("connection",s=>{
   if([...r.players.values()].some(p=>p.id!==r.hostId&&!p.ready))return cb({ok:false,message:"준비 필요"});
   r.status="playing";r.items=makeItems();r.endsAt=Date.now()+ROUND;
   let k=0;for(const p of r.players.values()){p.floor=1;p.x=1160+(k%3)*45;p.y=970+Math.floor(k/3)*45;p.hands=[];p.stored=[];k++}
-  cb({ok:true});io.to(r.code).emit("game-started",{endsAt:r.endsAt,items:r.items,bunker:BUNKER,itemDefs:DEFS,handLimit:LIMIT,players:[...r.players.values()]});
+  cb({ok:true});io.to(r.code).emit("game-started",{
+    endsAt:r.endsAt,
+    items:r.items,
+    bunker:BUNKER,
+    itemDefs:DEFS,
+    handLimit:LIMIT,
+    day:r.day,
+    sanity:r.sanity,
+    bounty:r.bounty,
+    bountyLevel:r.bountyLevel,
+    bunkerStock:r.bunkerStock,
+    weapons:r.weapons,
+    power:r.power,
+    security:r.security,
+    players:[...r.players.values()]
+  });
  });
  s.on("player-move",d=>{const r=rooms.get(socketRoom.get(s.id));if(!r)return;const p=r.players.get(s.id);if(!p)return;p.x=+d.x;p.y=+d.y;p.floor=+d.floor;s.to(r.code).emit("player-moved",{id:p.id,x:p.x,y:p.y,floor:p.floor})});
  s.on("take-item",(id,cb=()=>{})=>{
@@ -99,7 +131,89 @@ io.on("connection",s=>{
   const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);if(!p||p.floor!==1)return cb({ok:false,message:"1층 벙커에서 보관"});
   const x=p.x+15,y=p.y+15,inside=x>=BUNKER.x&&x<=BUNKER.x+BUNKER.w&&y>=BUNKER.y&&y<=BUNKER.y+BUNKER.h;
   if(!inside)return cb({ok:false,message:"벙커 안에서 보관"});if(!p.hands.length)return cb({ok:false,message:"빈손"});
-  p.stored.push(...p.hands);p.hands=[];io.to(r.code).emit("items-deposited",{playerId:p.id,hands:p.hands,stored:p.stored});cb({ok:true,hands:p.hands,stored:p.stored})
+  for(const type of p.hands){
+    r.bunkerStock[type]=(r.bunkerStock[type]||0)+1;
+    if(type==="axe") r.weapons.axe=(r.weapons.axe||0)+1;
+  }
+  p.stored.push(...p.hands);
+  p.hands=[];
+  io.to(r.code).emit("items-deposited",{
+    playerId:p.id,
+    hands:p.hands,
+    stored:p.stored,
+    bunkerStock:r.bunkerStock,
+    weapons:r.weapons
+  });
+  cb({ok:true,hands:p.hands,stored:p.stored,bunkerStock:r.bunkerStock,weapons:r.weapons})
+ });
+
+ s.on("finish-scavenge",(cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p)return cb({ok:false});
+
+  const cx=p.x+15,cy=p.y+15;
+  const alive=
+    p.floor===1 &&
+    cx>=BUNKER.x && cx<=BUNKER.x+BUNKER.w &&
+    cy>=BUNKER.y && cy<=BUNKER.y+BUNKER.h;
+
+  if(alive){
+    r.day+=1;
+    r.sanity+=10;
+    r.bounty=Math.min(3,r.bounty+1);
+  }
+
+  io.to(r.code).emit("scavenge-result",{
+    alive,
+    day:r.day,
+    sanity:r.sanity,
+    bounty:r.bounty,
+    bountyLevel:r.bountyLevel,
+    bunkerStock:r.bunkerStock,
+    weapons:r.weapons,
+    power:r.power,
+    security:r.security
+  });
+
+  cb({ok:true,alive});
+ });
+
+ s.on("buy-sanity-item",(type,cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id));
+  if(!r)return cb({ok:false,message:"방 없음"});
+
+  const prices={
+    battery:500,
+    beans:800,
+    water:800,
+    medkit:1500,
+    flashlight:2500,
+    backpack:7000,
+    mask:12000,
+    axe:18000,
+    blueprint:30000
+  };
+
+  const price=prices[type];
+  if(!price)return cb({ok:false,message:"판매하지 않는 물품"});
+  if(r.sanity<price)return cb({ok:false,message:"Sanity Point가 부족합니다."});
+
+  r.sanity-=price;
+  r.bunkerStock[type]=(r.bunkerStock[type]||0)+1;
+  if(type==="axe")r.weapons.axe=(r.weapons.axe||0)+1;
+
+  io.to(r.code).emit("bunker-state",{
+    day:r.day,
+    sanity:r.sanity,
+    bounty:r.bounty,
+    bountyLevel:r.bountyLevel,
+    bunkerStock:r.bunkerStock,
+    weapons:r.weapons,
+    power:r.power,
+    security:r.security
+  });
+
+  cb({ok:true,sanity:r.sanity,bunkerStock:r.bunkerStock,weapons:r.weapons});
  });
  s.on("leave-room",(cb=()=>{})=>{leave(s);cb({ok:true})});s.on("disconnect",()=>leave(s))
 });
