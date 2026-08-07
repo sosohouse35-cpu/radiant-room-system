@@ -12,7 +12,17 @@ $("ready").onclick=()=>ioClient.emit("toggle-ready",r=>{if(!r.ok)toast("변경 �
 $("start").onclick=()=>ioClient.emit("start-game",r=>{if(!r.ok)toast(r.message)});
 ioClient.on("room-list",rs=>$("rooms").innerHTML=rs.map(r=>`<div><button data-c="${r.code}">${r.name} (${r.playerCount}/${r.maxPlayers})</button></div>`).join(""));
 $("rooms").onclick=e=>{if(e.target.dataset.c)ioClient.emit("join-room",{nickname:$("nick").value,code:e.target.dataset.c},joined)};
-ioClient.on("room-updated",r=>{room=r;renderLobby()});ioClient.on("connect",()=>{$("status").textContent="연결됨"});
+ioClient.on("room-updated",r=>{
+  room=r;
+  renderLobby();
+
+  const activeIds=new Set(r.players.map(p=>p.id));
+  Object.keys(bunkerOthers).forEach(id=>{
+    if(!activeIds.has(id)){
+      delete bunkerOthers[id];
+    }
+  });
+});ioClient.on("connect",()=>{$("status").textContent="연결됨"});
 
 const canvas=$("canvas"),ctx=canvas.getContext("2d");
 const W=2400,H=1600,T=40,P=30,SPEED=235,COLS=W/T,ROWS=H/T;
@@ -450,18 +460,18 @@ const BUNKER_OBJECTS = [
   {id:"power",label:"전력 공급",x:760,y:365,w:102,h:76,solid:true,kind:"power"},
   {id:"water",label:"물",x:792,y:468,w:70,h:120,solid:true,kind:"water"},
 
-  /* 환풍구는 3개 */
-  {id:"vent1",label:"환풍구 1",x:710,y:610,w:46,h:38,solid:true,kind:"vent"},
-  {id:"vent2",label:"환풍구 2",x:760,y:610,w:46,h:38,solid:true,kind:"vent"},
-  {id:"vent3",label:"환풍구 3",x:810,y:610,w:46,h:38,solid:true,kind:"vent"},
+  /* 사용자 스케치 기준 환풍구 3개 */
+  {id:"ventTop",label:"환풍구",x:430,y:28,w:112,h:34,solid:true,kind:"vent"},
+  {id:"ventLeft",label:"환풍구",x:82,y:425,w:40,h:112,solid:true,kind:"ventVertical"},
+  {id:"ventBottom",label:"환풍구",x:730,y:718,w:132,h:34,solid:true,kind:"vent"},
 
   /* 계단은 장식 */
   {id:"stairs",label:"계단",x:300,y:610,w:390,h:92,solid:false,kind:"stairs"},
 
-  /* 계단 왼쪽 벙커문: 이후 탐사 출발 지점 */
+  /* 계단 왼쪽 탐사용 벙커문 */
   {id:"bunkerDoor",label:"벙커문",x:205,y:590,w:70,h:105,solid:true,kind:"door"},
 
-  /* 샤워실은 실제 방 */
+  /* 샤워실 */
   {id:"showerRoom",label:"샤워실",x:665,y:92,w:197,h:240,solid:false,kind:"room"}
 ];
 
@@ -621,9 +631,27 @@ function drawBunkerInterior(){
       bctx.fillStyle="#6f929f";bctx.fillRect(x,y,o.w,o.h);
       bctx.strokeStyle="#c3e5ee";bctx.strokeRect(x+10,y+10,o.w-20,o.h-20);
     }else if(o.kind==="vent"){
-      bctx.fillStyle="#565b5b";bctx.fillRect(x,y,o.w,o.h);
+      bctx.fillStyle="#565b5b";
+      bctx.fillRect(x,y,o.w,o.h);
       bctx.strokeStyle="#262929";
-      for(let i=8;i<o.w;i+=10){bctx.beginPath();bctx.moveTo(x+i,y+5);bctx.lineTo(x+i,y+o.h-5);bctx.stroke()}
+
+      for(let i=8;i<o.w;i+=10){
+        bctx.beginPath();
+        bctx.moveTo(x+i,y+5);
+        bctx.lineTo(x+i,y+o.h-5);
+        bctx.stroke();
+      }
+    }else if(o.kind==="ventVertical"){
+      bctx.fillStyle="#565b5b";
+      bctx.fillRect(x,y,o.w,o.h);
+      bctx.strokeStyle="#262929";
+
+      for(let i=8;i<o.h;i+=10){
+        bctx.beginPath();
+        bctx.moveTo(x+5,y+i);
+        bctx.lineTo(x+o.w-5,y+i);
+        bctx.stroke();
+      }
     }else if(o.kind==="door"){
       bctx.fillStyle="#484f4f";bctx.fillRect(x,y,o.w,o.h);
       bctx.strokeStyle="#111";bctx.lineWidth=4;bctx.strokeRect(x,y,o.w,o.h);
@@ -927,7 +955,7 @@ function interactBunker(){
     return;
   }
 
-  if(["vent1","vent2","vent3"].includes(bunkerNear.id)){
+  if(["ventTop","ventLeft","ventBottom"].includes(bunkerNear.id)){
     toast(`${bunkerNear.label}: 정상 작동 중`);
     return;
   }
@@ -958,11 +986,24 @@ function enterBunkerScene(){
   // 상태책은 벙커 안에서만 표시
   $("bookButton").classList.remove("hidden");
   $("messageButton").classList.remove("hidden");
+
+  $("bookButton").style.setProperty("display","block","important");
+  $("bookButton").style.setProperty("z-index","125","important");
+  $("messageButton").style.setProperty("display","block","important");
+  $("messageButton").style.setProperty("z-index","125","important");
   $("statusPanel").classList.add("hidden");
 
   // 모바일 조이스틱은 벙커에서도 유지
   const mobileControls=document.querySelector(".mobile");
-  if(mobileControls)mobileControls.style.display="block";
+  if(mobileControls){
+    mobileControls.style.setProperty("display","block","important");
+    mobileControls.style.setProperty("z-index","125","important");
+  }
+
+  const joystickBase=$("joystickBase");
+  if(joystickBase){
+    joystickBase.style.setProperty("display","block","important");
+  }
 
   ioClient.emit("get-bunker-players",r=>{
     if(r?.ok){
@@ -988,21 +1029,92 @@ function enterBunkerScene(){
 }
 
 
+function renderChatMessage(message){
+  const row=document.createElement("div");
+  row.className=
+    "chat-message" +
+    (message.playerId===myId ? " mine" : "");
+
+  const time=new Date(message.time).toLocaleTimeString(
+    [],
+    {hour:"2-digit",minute:"2-digit"}
+  );
+
+  const header=document.createElement("span");
+  header.className="chat-name";
+  header.textContent=message.nickname;
+
+  const stamp=document.createElement("span");
+  stamp.className="chat-time";
+  stamp.textContent=time;
+  header.appendChild(stamp);
+
+  const body=document.createElement("div");
+  body.textContent=message.text;
+
+  row.append(header,body);
+  $("messageList").appendChild(row);
+}
+
+function scrollChatBottom(){
+  $("messageList").scrollTop=$("messageList").scrollHeight;
+}
+
 $("messageButton").onclick=()=>{
   ioClient.emit("get-messages",r=>{
-    if(!r?.ok)return toast("메시지를 불러올 수 없습니다.");
-    $("messageList").innerHTML=r.messages.length
-      ? r.messages.map(m=>`<div class="message-card"><b>${m.title}</b><span>${m.body}</span></div>`).join("")
-      : '<div class="message-card">새 메시지가 없습니다.</div>';
+    if(!r?.ok){
+      toast("채팅을 불러올 수 없습니다.");
+      return;
+    }
+
+    $("messageList").innerHTML="";
+    r.messages.forEach(renderChatMessage);
     $("messagePanel").classList.remove("hidden");
+    scrollChatBottom();
+    $("messageInput").focus();
   });
 };
 
-$("messageClose").onclick=()=>$("messagePanel").classList.add("hidden");
+$("messageClose").onclick=()=>{
+  $("messagePanel").classList.add("hidden");
+};
+
+function sendTeamMessage(){
+  const text=$("messageInput").value.trim();
+  if(!text)return;
+
+  ioClient.emit("send-message",text,r=>{
+    if(!r?.ok){
+      toast(r?.message||"전송 실패");
+      return;
+    }
+
+    $("messageInput").value="";
+  });
+}
+
+$("messageSend").onclick=sendTeamMessage;
+
+$("messageInput").addEventListener("keydown",e=>{
+  if(e.key==="Enter"){
+    e.preventDefault();
+    sendTeamMessage();
+  }
+});
+
+ioClient.on("team-message",message=>{
+  renderChatMessage(message);
+  scrollChatBottom();
+});
 
 ioClient.on("bunker-player-moved",p=>{
   bunkerOthers[p.id]={...(bunkerOthers[p.id]||{}),...p};
 });
+
+ioClient.on("bunker-player-left",data=>{
+  delete bunkerOthers[data.id];
+});
+
 
 ioClient.on("scavenge-result",d=>{
   day=d.day||day;
