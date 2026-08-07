@@ -66,7 +66,7 @@ function join(s,r,name,cb){
  name=String(name||"").trim().slice(0,14);if(!name)return cb({ok:false,message:"닉네임 입력"});
  const used=new Set([...r.players.values()].map(p=>p.color));
  const color=COLORS.find(c=>!used.has(c))||pick(COLORS);
- const p={id:s.id,nickname:name,ready:false,color,floor:1,x:1180,y:980,hands:[],stored:[]};
+ const p={id:s.id,nickname:name,ready:false,color,floor:1,x:1180,y:980,hands:[],stored:[],bunkerX:330,bunkerY:560,inBunker:false};
  r.players.set(s.id,p);socketRoom.set(s.id,r.code);s.join(r.code);cb({ok:true,room:view(r),myId:s.id});emit(r)
 }
 
@@ -101,7 +101,7 @@ io.on("connection",s=>{
   const r=rooms.get(socketRoom.get(s.id));if(!r)return cb({ok:false,message:"방 없음"});if(r.hostId!==s.id)return cb({ok:false,message:"방장만 가능"});
   if([...r.players.values()].some(p=>p.id!==r.hostId&&!p.ready))return cb({ok:false,message:"준비 필요"});
   r.status="playing";r.items=makeItems();r.endsAt=Date.now()+ROUND;
-  let k=0;for(const p of r.players.values()){p.floor=1;p.x=1160+(k%3)*45;p.y=970+Math.floor(k/3)*45;p.hands=[];p.stored=[];k++}
+  let k=0;for(const p of r.players.values()){p.floor=1;p.x=1160+(k%3)*45;p.y=970+Math.floor(k/3)*45;p.hands=[];p.stored=[];p.inBunker=false;p.bunkerX=330+(k%3)*38;p.bunkerY=560+Math.floor(k/3)*38;k++}
   cb({ok:true});io.to(r.code).emit("game-started",{
     endsAt:r.endsAt,
     items:r.items,
@@ -158,8 +158,8 @@ io.on("connection",s=>{
     cy>=BUNKER.y && cy<=BUNKER.y+BUNKER.h;
 
   if(alive){
-    // 첫 수집 종료 후 벙커에 들어와도 DAY 1을 유지합니다.
-    // 이후 실제 "하루 넘기기" 기능이 추가될 때 day를 증가시킵니다.
+    // 첫 수집 종료 후 벙커에 들어와도 DAY 1 유지
+    p.inBunker=true;
     r.sanity+=10;
     r.bounty=Math.min(3,r.bounty+1);
   }
@@ -179,6 +179,48 @@ io.on("connection",s=>{
   cb({ok:true,alive});
  });
 
+
+
+ s.on("bunker-move",(d)=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p||!p.inBunker)return;
+  const x=Number(d?.x),y=Number(d?.y);
+  if(!Number.isFinite(x)||!Number.isFinite(y))return;
+  p.bunkerX=Math.max(145,Math.min(835,x));
+  p.bunkerY=Math.max(85,Math.min(670,y));
+  s.to(r.code).emit("bunker-player-moved",{
+    id:p.id,
+    x:p.bunkerX,
+    y:p.bunkerY,
+    nickname:p.nickname,
+    color:p.color
+  });
+ });
+
+ s.on("get-bunker-players",(cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id));
+  if(!r)return cb({ok:false,players:[]});
+  cb({
+    ok:true,
+    players:[...r.players.values()]
+      .filter(p=>p.inBunker)
+      .map(p=>({id:p.id,x:p.bunkerX,y:p.bunkerY,nickname:p.nickname,color:p.color}))
+  });
+ });
+
+ s.on("get-messages",(cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id));
+  if(!r)return cb({ok:false,messages:[]});
+  const messages=[];
+  messages.push({title:`DAY ${r.day}`,body:"벙커 시스템 정상 작동 중"});
+  messages.push({title:"SECURITY",body:`문 상태: ${r.security} · 전력 ${r.power}%`});
+  if(r.bounty>=3){
+    messages.push({title:"WARNING",body:`Bounty Hunter Level ${r.bountyLevel} 접근 경고`});
+  }else{
+    messages.push({title:"BOUNTY",body:`Bounty Hunter 게이지 ${r.bounty}/3`});
+  }
+  cb({ok:true,messages});
+ });
 
  s.on("consume-bunker-item",(type,cb=()=>{})=>{
   const r=rooms.get(socketRoom.get(s.id));
