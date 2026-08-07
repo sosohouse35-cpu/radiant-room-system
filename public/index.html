@@ -8,7 +8,7 @@
 <div class="hud left"><b id="floor">1층</b><span>E 줍기 · F 보관 · Q 계단</span></div>
 <div class="hud clock">
   <div id="dayLabel">DAY 1</div>
-  <div><b id="timer">60</b>초</div>
+  <div class="scavenge-time"><span>남은 시간 </span><b id="timer">60</b><span>초</span></div>
 </div>
 <button id="bookButton" class="book-button hidden" type="button">📖</button>
 
@@ -40,12 +40,21 @@
 <div id="bunkerUI" class="bunker-ui hidden">
   <canvas id="bunkerCanvas"></canvas>
 
-  <div class="bunker-topbar">
+  <button id="messageButton" class="message-button hidden" type="button">✉️</button>
+<div id="messagePanel" class="message-panel hidden">
+  <div class="message-head">
+    <strong>MESSAGES</strong>
+    <button id="messageClose" type="button">×</button>
+  </div>
+  <div id="messageList"></div>
+</div>
+
+<div class="bunker-topbar">
     <strong id="bunkerDay">DAY 2</strong>
     <span id="bunkerStatusText">벙커 내부</span>
   </div>
 
-  <div id="bunkerPrompt" class="bunker-prompt hidden">E · 사용</div>
+  <button id="bunkerPrompt" class="bunker-prompt hidden" type="button">E · 사용</button>
 
   <button id="computerClose" class="computer-close hidden">닫기</button>
 
