@@ -1,730 +1,106 @@
 "use strict";
+const path=require("path");
+const http=require("http");
+const express=require("express");
+const {Server}=require("socket.io");
+const app=express(), server=http.createServer(app), io=new Server(server);
+app.use(express.static(path.join(__dirname,"public")));
 
-const path = require("path");
-const http = require("http");
-const express = require("express");
-const { Server } = require("socket.io");
-
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
-
-app.use(express.static(path.join(__dirname, "public")));
-
-const rooms = new Map();
-const socketRoom = new Map();
-
-const COLORS = [
-  "#ff6b6b", "#4dabf7", "#69db7c", "#ffd43b",
-  "#da77f2", "#ffa94d", "#38d9a9", "#f06595"
-];
-
-const HAND_LIMIT = 4;
-const ROUND_MS = 95_000;
-
-const ITEM_DEFS = {
-  beans:     { slots: 1, special: false },
-  water:     { slots: 1, special: false },
-  soap:      { slots: 1, special: false },
-  tape:      { slots: 1, special: false },
-  trap:      { slots: 1, special: false },
-  spray:     { slots: 1, special: false },
-  medkit:    { slots: 2, special: false },
-  battery:   { slots: 2, special: false },
-  flashlight:{ slots: 2, special: false },
-
-  mask:      { slots: 2, special: true },
-  axe:       { slots: 3, special: true },
-  backpack:  { slots: 4, special: true },
-  blueprint: { slots: 1, special: true },
-  toolbox:   { slots: 4, special: true },
-  map:       { slots: 1, special: true },
-  radio:     { slots: 3, special: true }
+const rooms=new Map(), socketRoom=new Map();
+const COLORS=["#ff6b6b","#4dabf7","#69db7c","#ffd43b","#da77f2","#ffa94d","#38d9a9","#f06595"];
+const LIMIT=4, ROUND=95000;
+const DEFS={
+ beans:{slots:1},water:{slots:1},soap:{slots:1},tape:{slots:1},trap:{slots:1},spray:{slots:1},
+ medkit:{slots:2},battery:{slots:2},flashlight:{slots:2},mask:{slots:2},axe:{slots:3},
+ backpack:{slots:4},blueprint:{slots:1},toolbox:{slots:4},map:{slots:1},radio:{slots:3}
 };
+const BUNKER={floor:1,x:1050,y:900,w:300,h:190};
 
-const BUNKER = {
-  floor: 1,
-  x: 1100,
-  y: 720,
-  w: 280,
-  h: 200
+const Z={
+ kitchen:[
+  {floor:1,x:260,y:240},{floor:1,x:380,y:260},{floor:1,x:520,y:260},
+  {floor:1,x:300,y:460},{floor:1,x:470,y:470},{floor:1,x:650,y:420}
+ ],
+ pantry:[{floor:1,x:720,y:260},{floor:1,x:740,y:390},{floor:1,x:670,y:520}],
+ living:[{floor:1,x:1100,y:260},{floor:1,x:1300,y:300},{floor:1,x:1130,y:520},{floor:1,x:1460,y:500}],
+ bathroom1:[{floor:1,x:1880,y:260},{floor:1,x:2020,y:360},{floor:1,x:1880,y:520}],
+ garage:[{floor:1,x:280,y:1000},{floor:1,x:500,y:1100},{floor:1,x:760,y:1030}],
+ bedroom2:[{floor:2,x:300,y:260},{floor:2,x:520,y:300},{floor:2,x:650,y:520}],
+ study2:[{floor:2,x:1120,y:250},{floor:2,x:1280,y:300},{floor:2,x:1450,y:500}],
+ bathroom2:[{floor:2,x:1890,y:270},{floor:2,x:2020,y:390},{floor:2,x:1880,y:520}],
+ hall2:[{floor:2,x:900,y:900},{floor:2,x:1300,y:900},{floor:2,x:1650,y:900}],
+ attic:[{floor:3,x:350,y:300},{floor:3,x:650,y:430},{floor:3,x:1000,y:320},{floor:3,x:1400,y:420},{floor:3,x:1850,y:340}]
 };
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const shuffle=a=>[...a].sort(()=>Math.random()-.5);
 
-const ZONES = {
-  kitchen: [
-    { floor: 1, x: 260, y: 230 },
-    { floor: 1, x: 360, y: 240 },
-    { floor: 1, x: 470, y: 260 },
-    { floor: 1, x: 300, y: 420 },
-    { floor: 1, x: 440, y: 420 },
-    { floor: 1, x: 570, y: 360 }
-  ],
-  pantry: [
-    { floor: 1, x: 650, y: 240 },
-    { floor: 1, x: 700, y: 330 },
-    { floor: 1, x: 650, y: 440 }
-  ],
-  living: [
-    { floor: 1, x: 1000, y: 250 },
-    { floor: 1, x: 1170, y: 270 },
-    { floor: 1, x: 1370, y: 300 },
-    { floor: 1, x: 1030, y: 500 },
-    { floor: 1, x: 1350, y: 500 }
-  ],
-  bathroom1: [
-    { floor: 1, x: 1770, y: 250 },
-    { floor: 1, x: 1860, y: 350 },
-    { floor: 1, x: 1780, y: 480 }
-  ],
-  garage: [
-    { floor: 1, x: 270, y: 1030 },
-    { floor: 1, x: 430, y: 1080 },
-    { floor: 1, x: 630, y: 1040 },
-    { floor: 1, x: 760, y: 1170 }
-  ],
-  bedroom2: [
-    { floor: 2, x: 300, y: 260 },
-    { floor: 2, x: 470, y: 300 },
-    { floor: 2, x: 600, y: 430 },
-    { floor: 2, x: 360, y: 540 }
-  ],
-  study2: [
-    { floor: 2, x: 1060, y: 250 },
-    { floor: 2, x: 1210, y: 280 },
-    { floor: 2, x: 1360, y: 410 }
-  ],
-  bathroom2: [
-    { floor: 2, x: 1770, y: 260 },
-    { floor: 2, x: 1860, y: 360 },
-    { floor: 2, x: 1780, y: 490 }
-  ],
-  hall2: [
-    { floor: 2, x: 900, y: 790 },
-    { floor: 2, x: 1260, y: 790 },
-    { floor: 2, x: 1560, y: 790 }
-  ],
-  attic: [
-    { floor: 3, x: 350, y: 300 },
-    { floor: 3, x: 570, y: 390 },
-    { floor: 3, x: 850, y: 300 },
-    { floor: 3, x: 1120, y: 430 },
-    { floor: 3, x: 1490, y: 320 },
-    { floor: 3, x: 1810, y: 430 }
-  ]
-};
-
-function clean(value, maxLength) {
-  return String(value ?? "")
-    .replace(/[<>]/g, "")
-    .trim()
-    .slice(0, maxLength);
+function code(){const c="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s;do{s=Array.from({length:6},()=>c[Math.floor(Math.random()*c.length)]).join("")}while(rooms.has(s));return s}
+function view(r){return {code:r.code,name:r.name,maxPlayers:r.maxPlayers,hostId:r.hostId,status:r.status,players:[...r.players.values()].map(p=>({id:p.id,nickname:p.nickname,ready:p.ready,color:p.color}))}}
+function list(){return [...rooms.values()].filter(r=>r.status==="waiting").map(r=>({code:r.code,name:r.name,playerCount:r.players.size,maxPlayers:r.maxPlayers}))}
+function emit(r){io.to(r.code).emit("room-updated",view(r));io.emit("room-list",list())}
+function slots(p){return p.hands.reduce((s,t)=>s+(DEFS[t]?.slots||1),0)}
+function makeItems(){
+ const out=[], add=(type,p)=>out.push({id:"i"+out.length,type,slots:DEFS[type].slots,...p,taken:false});
+ let f=shuffle([...Z.kitchen,...Z.pantry]);
+ ["beans","beans","beans","beans","beans","water","water","water","water","water"].forEach((t,i)=>add(t,f[i%f.length]));
+ let n=shuffle([...Z.living,...Z.garage,...Z.bedroom2,...Z.study2,...Z.hall2,...Z.attic]);
+ ["soap","soap","tape","tape","trap","trap","spray","spray","medkit","medkit","battery","battery","battery","flashlight","flashlight"].forEach((t,i)=>add(t,n[i%n.length]));
+ add("mask",pick([...Z.bathroom1,...Z.bathroom2,{floor:1,x:1740,y:620},{floor:2,x:1740,y:620}]));
+ add("axe",pick([...Z.garage,...Z.attic,{floor:1,x:1710,y:520}]));
+ add("backpack",pick([...Z.bedroom2,{floor:2,x:760,y:300},{floor:2,x:980,y:520}]));
+ add("blueprint",pick([{floor:2,x:1120,y:250},{floor:2,x:1270,y:250},{floor:2,x:1420,y:250}]));
+ add("toolbox",pick([...Z.garage,{floor:3,x:900,y:520}]));
+ add("map",pick([{floor:1,x:1280,y:360},{floor:2,x:1250,y:380},{floor:3,x:1450,y:330}]));
+ add("radio",pick([{floor:1,x:1160,y:380},{floor:2,x:1430,y:380},{floor:3,x:1780,y:380}]));
+ return out;
+}
+function leave(s){
+ const c=socketRoom.get(s.id),r=rooms.get(c); if(!c||!r)return;
+ socketRoom.delete(s.id);s.leave(c);r.players.delete(s.id);
+ if(!r.players.size){rooms.delete(c);io.emit("room-list",list());return}
+ if(r.hostId===s.id){r.hostId=r.players.keys().next().value;r.players.get(r.hostId).ready=true} emit(r)
+}
+function join(s,r,name,cb){
+ if(r.status!=="waiting")return cb({ok:false,message:"이미 시작됨"});
+ if(r.players.size>=r.maxPlayers)return cb({ok:false,message:"방이 가득 참"});
+ name=String(name||"").trim().slice(0,14);if(!name)return cb({ok:false,message:"닉네임 입력"});
+ const used=new Set([...r.players.values()].map(p=>p.color));
+ const color=COLORS.find(c=>!used.has(c))||pick(COLORS);
+ const p={id:s.id,nickname:name,ready:false,color,floor:1,x:1180,y:980,hands:[],stored:[]};
+ r.players.set(s.id,p);socketRoom.set(s.id,r.code);s.join(r.code);cb({ok:true,room:view(r),myId:s.id});emit(r)
 }
 
-function createCode() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let result;
-
-  do {
-    result = Array.from(
-      { length: 6 },
-      () => chars[Math.floor(Math.random() * chars.length)]
-    ).join("");
-  } while (rooms.has(result));
-
-  return result;
-}
-
-function roomForClient(room) {
-  return {
-    code: room.code,
-    name: room.name,
-    private: room.private,
-    maxPlayers: room.maxPlayers,
-    hostId: room.hostId,
-    status: room.status,
-    players: [...room.players.values()].map(player => ({
-      id: player.id,
-      nickname: player.nickname,
-      ready: player.ready,
-      color: player.color
-    }))
-  };
-}
-
-function publicRoomList() {
-  return [...rooms.values()]
-    .filter(room => !room.private && room.status === "waiting")
-    .map(room => ({
-      code: room.code,
-      name: room.name,
-      playerCount: room.players.size,
-      maxPlayers: room.maxPlayers
-    }));
-}
-
-function emitRoomList() {
-  io.emit("room-list", publicRoomList());
-}
-
-function emitRoom(room) {
-  io.to(room.code).emit("room-updated", roomForClient(room));
-  emitRoomList();
-}
-
-function shuffled(list) {
-  return [...list].sort(() => Math.random() - 0.5);
-}
-
-function pick(list) {
-  return list[Math.floor(Math.random() * list.length)];
-}
-
-function addItem(items, type, point) {
-  items.push({
-    id: `item-${items.length}`,
-    type,
-    slots: ITEM_DEFS[type].slots,
-    floor: point.floor,
-    x: point.x,
-    y: point.y,
-    taken: false
-  });
-}
-
-function makeItems() {
-  const items = [];
-
-  // 음식과 물은 주방/팬트리에 집중
-  const foodPoints = shuffled([...ZONES.kitchen, ...ZONES.pantry]);
-
-  [
-    "beans", "beans", "beans", "beans", "beans",
-    "water", "water", "water", "water", "water"
-  ].forEach((type, index) => {
-    addItem(items, type, foodPoints[index % foodPoints.length]);
-  });
-
-  // 일반 생존 물품은 여러 층에 여러 개
-  const normalPoints = shuffled([
-    ...ZONES.living,
-    ...ZONES.garage,
-    ...ZONES.bedroom2,
-    ...ZONES.study2,
-    ...ZONES.hall2,
-    ...ZONES.attic
-  ]);
-
-  [
-    "soap", "soap",
-    "tape", "tape",
-    "trap", "trap",
-    "spray", "spray",
-    "medkit", "medkit",
-    "battery", "battery", "battery",
-    "flashlight", "flashlight"
-  ].forEach((type, index) => {
-    addItem(items, type, normalPoints[index % normalPoints.length]);
-  });
-
-  // 특수 아이템은 종류별로 정확히 1개씩
-  addItem(
-    items,
-    "mask",
-    pick([
-      ...ZONES.bathroom1,
-      ...ZONES.bathroom2,
-      { floor: 1, x: 1650, y: 610 },
-      { floor: 2, x: 1650, y: 610 }
-    ])
-  );
-
-  addItem(
-    items,
-    "axe",
-    pick([
-      ...ZONES.garage,
-      ...ZONES.attic,
-      { floor: 1, x: 1640, y: 470 }
-    ])
-  );
-
-  addItem(
-    items,
-    "backpack",
-    pick([
-      ...ZONES.bedroom2,
-      { floor: 2, x: 660, y: 270 },
-      { floor: 2, x: 950, y: 470 }
-    ])
-  );
-
-  addItem(
-    items,
-    "blueprint",
-    pick([
-      { floor: 2, x: 1090, y: 250 },
-      { floor: 2, x: 1220, y: 250 },
-      { floor: 2, x: 1360, y: 250 }
-    ])
-  );
-
-  addItem(
-    items,
-    "toolbox",
-    pick([
-      ...ZONES.garage,
-      { floor: 3, x: 870, y: 500 }
-    ])
-  );
-
-  addItem(
-    items,
-    "map",
-    pick([
-      { floor: 1, x: 1240, y: 340 },
-      { floor: 2, x: 1180, y: 360 },
-      { floor: 3, x: 1410, y: 310 }
-    ])
-  );
-
-  addItem(
-    items,
-    "radio",
-    pick([
-      { floor: 1, x: 1080, y: 360 },
-      { floor: 2, x: 1340, y: 360 },
-      { floor: 3, x: 1720, y: 360 }
-    ])
-  );
-
-  return items;
-}
-
-function usedSlots(player) {
-  return player.hands.reduce(
-    (sum, type) => sum + (ITEM_DEFS[type]?.slots || 1),
-    0
-  );
-}
-
-function leaveCurrentRoom(socket) {
-  const roomCode = socketRoom.get(socket.id);
-  if (!roomCode) return;
-
-  const room = rooms.get(roomCode);
-  socketRoom.delete(socket.id);
-  socket.leave(roomCode);
-
-  if (!room) return;
-
-  room.players.delete(socket.id);
-
-  if (room.players.size === 0) {
-    rooms.delete(roomCode);
-    emitRoomList();
-    return;
-  }
-
-  if (room.hostId === socket.id) {
-    room.hostId = room.players.keys().next().value;
-    room.players.get(room.hostId).ready = true;
-  }
-
-  emitRoom(room);
-}
-
-function joinRoom(socket, room, nickname, callback) {
-  if (room.status !== "waiting") {
-    return callback({ ok: false, message: "이미 시작된 방입니다." });
-  }
-
-  if (room.players.size >= room.maxPlayers) {
-    return callback({ ok: false, message: "방이 가득 찼습니다." });
-  }
-
-  const safeName = clean(nickname, 14);
-
-  if (!safeName) {
-    return callback({ ok: false, message: "닉네임을 입력하세요." });
-  }
-
-  if (
-    [...room.players.values()].some(
-      player => player.nickname.toLowerCase() === safeName.toLowerCase()
-    )
-  ) {
-    return callback({ ok: false, message: "같은 닉네임이 이미 있습니다." });
-  }
-
-  const usedColors = new Set(
-    [...room.players.values()].map(player => player.color)
-  );
-
-  const color =
-    COLORS.find(candidate => !usedColors.has(candidate)) ||
-    COLORS[Math.floor(Math.random() * COLORS.length)];
-
-  const player = {
-    id: socket.id,
-    nickname: safeName,
-    ready: false,
-    color,
-    floor: 1,
-    x: 1190,
-    y: 790,
-    hands: [],
-    stored: []
-  };
-
-  room.players.set(socket.id, player);
-  socketRoom.set(socket.id, room.code);
-  socket.join(room.code);
-
-  callback({
-    ok: true,
-    room: roomForClient(room),
-    myId: socket.id
-  });
-
-  emitRoom(room);
-}
-
-io.on("connection", socket => {
-  socket.emit("room-list", publicRoomList());
-
-  socket.on("get-room-list", () => {
-    socket.emit("room-list", publicRoomList());
-  });
-
-  socket.on("create-room", (payload, callback = () => {}) => {
-    if (socketRoom.has(socket.id)) {
-      return callback({ ok: false, message: "이미 다른 방에 있습니다." });
-    }
-
-    const nickname = clean(payload?.nickname, 14);
-    const roomName = clean(payload?.roomName, 24);
-
-    if (!nickname || !roomName) {
-      return callback({
-        ok: false,
-        message: "닉네임과 방 제목을 입력하세요."
-      });
-    }
-
-    const roomCode = createCode();
-
-    const player = {
-      id: socket.id,
-      nickname,
-      ready: true,
-      color: COLORS[0],
-      floor: 1,
-      x: 1190,
-      y: 790,
-      hands: [],
-      stored: []
-    };
-
-    const room = {
-      code: roomCode,
-      name: roomName,
-      private: Boolean(payload?.private),
-      maxPlayers: Math.max(
-        1,
-        Math.min(8, parseInt(payload?.maxPlayers, 10) || 4)
-      ),
-      hostId: socket.id,
-      status: "waiting",
-      players: new Map([[socket.id, player]]),
-      items: [],
-      endsAt: 0
-    };
-
-    rooms.set(roomCode, room);
-    socketRoom.set(socket.id, roomCode);
-    socket.join(roomCode);
-
-    callback({
-      ok: true,
-      room: roomForClient(room),
-      myId: socket.id
-    });
-
-    emitRoom(room);
-  });
-
-  socket.on("join-room", (payload, callback = () => {}) => {
-    const room = rooms.get(clean(payload?.code, 6).toUpperCase());
-
-    if (!room) {
-      return callback({ ok: false, message: "방을 찾을 수 없습니다." });
-    }
-
-    joinRoom(socket, room, payload?.nickname, callback);
-  });
-
-  socket.on("quick-join", (payload, callback = () => {}) => {
-    const room = [...rooms.values()].find(candidate =>
-      !candidate.private &&
-      candidate.status === "waiting" &&
-      candidate.players.size < candidate.maxPlayers
-    );
-
-    if (!room) {
-      return callback({
-        ok: false,
-        message: "입장 가능한 공개방이 없습니다."
-      });
-    }
-
-    joinRoom(socket, room, payload?.nickname, callback);
-  });
-
-  socket.on("toggle-ready", (callback = () => {}) => {
-    const room = rooms.get(socketRoom.get(socket.id));
-
-    if (!room) {
-      return callback({ ok: false, message: "방 정보가 없습니다." });
-    }
-
-    if (room.hostId === socket.id) {
-      return callback({
-        ok: false,
-        message: "방장은 항상 준비 상태입니다."
-      });
-    }
-
-    const player = room.players.get(socket.id);
-    player.ready = !player.ready;
-
-    callback({ ok: true });
-    emitRoom(room);
-  });
-
-  socket.on("start-game", (callback = () => {}) => {
-    const room = rooms.get(socketRoom.get(socket.id));
-
-    if (!room) {
-      return callback({ ok: false, message: "방 정보가 없습니다." });
-    }
-
-    if (room.hostId !== socket.id) {
-      return callback({
-        ok: false,
-        message: "방장만 시작할 수 있습니다."
-      });
-    }
-
-    const unready = [...room.players.values()].some(
-      player => player.id !== room.hostId && !player.ready
-    );
-
-    if (unready) {
-      return callback({
-        ok: false,
-        message: "모든 플레이어가 준비해야 합니다."
-      });
-    }
-
-    room.status = "playing";
-    room.items = makeItems();
-    room.endsAt = Date.now() + ROUND_MS;
-
-    let index = 0;
-
-    for (const player of room.players.values()) {
-      player.floor = 1;
-      player.x = 1160 + (index % 3) * 42;
-      player.y = 780 + Math.floor(index / 3) * 42;
-      player.hands = [];
-      player.stored = [];
-      index += 1;
-    }
-
-    callback({ ok: true });
-
-    io.to(room.code).emit("game-started", {
-      endsAt: room.endsAt,
-      items: room.items,
-      bunker: BUNKER,
-      handLimit: HAND_LIMIT,
-      itemDefs: ITEM_DEFS,
-      players: [...room.players.values()]
-    });
-
-    emitRoomList();
-  });
-
-  socket.on("player-move", data => {
-    const room = rooms.get(socketRoom.get(socket.id));
-
-    if (!room || room.status !== "playing") return;
-
-    const player = room.players.get(socket.id);
-
-    if (!player) return;
-
-    const x = Number(data?.x);
-    const y = Number(data?.y);
-    const floor = Number(data?.floor);
-
-    if (
-      !Number.isFinite(x) ||
-      !Number.isFinite(y) ||
-      ![1, 2, 3].includes(floor)
-    ) {
-      return;
-    }
-
-    player.x = Math.max(20, Math.min(2380, x));
-    player.y = Math.max(20, Math.min(1580, y));
-    player.floor = floor;
-
-    socket.to(room.code).emit("player-moved", {
-      id: player.id,
-      x: player.x,
-      y: player.y,
-      floor: player.floor
-    });
-  });
-
-  socket.on("take-item", (itemId, callback = () => {}) => {
-    const room = rooms.get(socketRoom.get(socket.id));
-
-    if (!room || room.status !== "playing") {
-      return callback({
-        ok: false,
-        message: "게임이 진행 중이 아닙니다."
-      });
-    }
-
-    const player = room.players.get(socket.id);
-    const item = room.items.find(candidate => candidate.id === itemId);
-
-    if (
-      !player ||
-      !item ||
-      item.taken ||
-      item.floor !== player.floor
-    ) {
-      return callback({
-        ok: false,
-        message: "아이템을 획득할 수 없습니다."
-      });
-    }
-
-    const itemSlots = ITEM_DEFS[item.type]?.slots || 1;
-    const nextSlots = usedSlots(player) + itemSlots;
-
-    if (nextSlots > HAND_LIMIT) {
-      return callback({
-        ok: false,
-        message: `손 공간이 부족합니다. 이 아이템은 ${itemSlots}칸이 필요합니다.`
-      });
-    }
-
-    const distance = Math.hypot(
-      player.x + 15 - item.x,
-      player.y + 15 - item.y
-    );
-
-    if (distance > 82) {
-      return callback({
-        ok: false,
-        message: "아이템과 거리가 너무 멉니다."
-      });
-    }
-
-    item.taken = true;
-    player.hands.push(item.type);
-
-    io.to(room.code).emit("item-taken", {
-      itemId,
-      playerId: player.id,
-      type: item.type,
-      hands: player.hands,
-      usedSlots: usedSlots(player)
-    });
-
-    callback({
-      ok: true,
-      hands: player.hands,
-      usedSlots: usedSlots(player)
-    });
-  });
-
-  socket.on("deposit-items", (callback = () => {}) => {
-    const room = rooms.get(socketRoom.get(socket.id));
-
-    if (!room || room.status !== "playing") {
-      return callback({
-        ok: false,
-        message: "게임이 진행 중이 아닙니다."
-      });
-    }
-
-    const player = room.players.get(socket.id);
-
-    if (!player || player.floor !== 1) {
-      return callback({
-        ok: false,
-        message: "1층 벙커에서만 보관할 수 있습니다."
-      });
-    }
-
-    const centerX = player.x + 15;
-    const centerY = player.y + 15;
-
-    const insideBunker =
-      centerX >= BUNKER.x &&
-      centerX <= BUNKER.x + BUNKER.w &&
-      centerY >= BUNKER.y &&
-      centerY <= BUNKER.y + BUNKER.h;
-
-    if (!insideBunker) {
-      return callback({
-        ok: false,
-        message: "벙커 안에서 F키를 누르세요."
-      });
-    }
-
-    if (player.hands.length === 0) {
-      return callback({
-        ok: false,
-        message: "보관할 아이템이 없습니다."
-      });
-    }
-
-    const deposited = [...player.hands];
-    player.stored.push(...deposited);
-    player.hands = [];
-
-    io.to(room.code).emit("items-deposited", {
-      playerId: player.id,
-      deposited,
-      hands: player.hands,
-      stored: player.stored
-    });
-
-    callback({
-      ok: true,
-      hands: player.hands,
-      stored: player.stored
-    });
-  });
-
-  socket.on("leave-room", (callback = () => {}) => {
-    leaveCurrentRoom(socket);
-    callback({ ok: true });
-  });
-
-  socket.on("disconnect", () => {
-    leaveCurrentRoom(socket);
-  });
+io.on("connection",s=>{
+ s.emit("room-list",list());
+ s.on("create-room",(d,cb=()=>{})=>{
+  const c=code(),p={id:s.id,nickname:String(d.nickname||"").trim().slice(0,14),ready:true,color:COLORS[0],floor:1,x:1180,y:980,hands:[],stored:[]};
+  if(!p.nickname||!String(d.roomName||"").trim())return cb({ok:false,message:"입력 확인"});
+  const r={code:c,name:String(d.roomName).trim().slice(0,24),maxPlayers:Math.max(1,Math.min(8,+d.maxPlayers||4)),hostId:s.id,status:"waiting",players:new Map([[s.id,p]]),items:[],endsAt:0};
+  rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id});emit(r)
+ });
+ s.on("join-room",(d,cb=()=>{})=>{const r=rooms.get(String(d.code||"").toUpperCase());if(!r)return cb({ok:false,message:"방 없음"});join(s,r,d.nickname,cb)});
+ s.on("toggle-ready",(cb=()=>{})=>{const r=rooms.get(socketRoom.get(s.id));if(!r)return cb({ok:false});if(r.hostId===s.id)return cb({ok:false});const p=r.players.get(s.id);p.ready=!p.ready;cb({ok:true});emit(r)});
+ s.on("start-game",(cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id));if(!r)return cb({ok:false,message:"방 없음"});if(r.hostId!==s.id)return cb({ok:false,message:"방장만 가능"});
+  if([...r.players.values()].some(p=>p.id!==r.hostId&&!p.ready))return cb({ok:false,message:"준비 필요"});
+  r.status="playing";r.items=makeItems();r.endsAt=Date.now()+ROUND;
+  let k=0;for(const p of r.players.values()){p.floor=1;p.x=1160+(k%3)*45;p.y=970+Math.floor(k/3)*45;p.hands=[];p.stored=[];k++}
+  cb({ok:true});io.to(r.code).emit("game-started",{endsAt:r.endsAt,items:r.items,bunker:BUNKER,itemDefs:DEFS,handLimit:LIMIT,players:[...r.players.values()]});
+ });
+ s.on("player-move",d=>{const r=rooms.get(socketRoom.get(s.id));if(!r)return;const p=r.players.get(s.id);if(!p)return;p.x=+d.x;p.y=+d.y;p.floor=+d.floor;s.to(r.code).emit("player-moved",{id:p.id,x:p.x,y:p.y,floor:p.floor})});
+ s.on("take-item",(id,cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id),it=r?.items.find(x=>x.id===id);
+  if(!r||!p||!it||it.taken||p.floor!==it.floor)return cb({ok:false,message:"획득 불가"});
+  const need=DEFS[it.type].slots;if(slots(p)+need>LIMIT)return cb({ok:false,message:`손 공간 부족 (${need}칸 필요)`});
+  if(Math.hypot(p.x+15-it.x,p.y+15-it.y)>85)return cb({ok:false,message:"너무 멂"});
+  it.taken=true;p.hands.push(it.type);io.to(r.code).emit("item-taken",{itemId:id,playerId:p.id,hands:p.hands});cb({ok:true})
+ });
+ s.on("deposit-items",(cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);if(!p||p.floor!==1)return cb({ok:false,message:"1층 벙커에서 보관"});
+  const x=p.x+15,y=p.y+15,inside=x>=BUNKER.x&&x<=BUNKER.x+BUNKER.w&&y>=BUNKER.y&&y<=BUNKER.y+BUNKER.h;
+  if(!inside)return cb({ok:false,message:"벙커 안에서 보관"});if(!p.hands.length)return cb({ok:false,message:"빈손"});
+  p.stored.push(...p.hands);p.hands=[];io.to(r.code).emit("items-deposited",{playerId:p.id,hands:p.hands,stored:p.stored});cb({ok:true,hands:p.hands,stored:p.stored})
+ });
+ s.on("leave-room",(cb=()=>{})=>{leave(s);cb({ok:true})});s.on("disconnect",()=>leave(s))
 });
-
-const PORT = process.env.PORT || 3000;
-
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Item collection server running on ${PORT}`);
-});
+server.listen(process.env.PORT||3000,"0.0.0.0");
