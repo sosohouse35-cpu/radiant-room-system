@@ -497,3 +497,152 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;touch-
  .joystick-base{width:100px!important;height:100px!important}
  .joystick-knob{width:42px!important;height:42px!important}
 }
+
+
+/* =========================================================
+   v10 status meters
+========================================================= */
+.stat-row{
+  display:flex!important;
+  justify-content:space-between!important;
+  border-bottom:0!important;
+  padding:6px 0 2px!important;
+}
+.status-meter{
+  width:100%;
+  height:8px;
+  padding:0!important;
+  border:1px solid rgba(255,255,255,.18)!important;
+  background:#181b17;
+}
+.status-meter i{
+  display:block;
+  height:100%;
+  width:100%;
+  background:#a9d35e;
+  transition:width .2s linear;
+}
+
+/* =========================================================
+   Expedition
+========================================================= */
+.expedition-ui{
+  position:fixed;
+  inset:0;
+  z-index:110;
+  width:100vw;
+  height:100dvh;
+  background:#090a08;
+  overflow:hidden;
+}
+#expeditionCanvas{
+  display:block;
+  width:100vw;
+  height:100dvh;
+}
+.expedition-hud{
+  position:fixed;
+  left:calc(10px + env(safe-area-inset-left));
+  top:calc(10px + env(safe-area-inset-top));
+  z-index:116;
+  display:grid;
+  gap:2px;
+  padding:9px 12px;
+  background:rgba(19,21,18,.88);
+  color:#eee;
+  border:1px solid #66715d;
+}
+.expedition-hud strong{color:#d6f055}
+
+.return-bunker-button{
+  position:fixed;
+  right:calc(10px + env(safe-area-inset-right));
+  top:calc(10px + env(safe-area-inset-top));
+  z-index:117;
+  background:#161a14;
+  color:#eee;
+}
+
+.expedition-prompt{
+  position:fixed;
+  left:50%;
+  bottom:calc(92px + env(safe-area-inset-bottom));
+  transform:translateX(-50%);
+  z-index:118;
+  background:rgba(255,248,225,.96);
+  color:#29231c;
+  border:1px solid #756b59;
+  font-weight:900;
+}
+.swing-button{
+  position:fixed;
+  right:calc(14px + env(safe-area-inset-right));
+  bottom:calc(86px + env(safe-area-inset-bottom));
+  z-index:118;
+  background:#3c241a;
+  color:#fff;
+  border:1px solid #a16f4f;
+}
+
+/* 모바일 가로 채팅은 화면을 거의 통째로 사용 */
+@media (orientation:landscape) and (max-height:520px){
+  .message-panel{
+    left:0!important;
+    right:0!important;
+    top:0!important;
+    bottom:0!important;
+    width:100vw!important;
+    height:100dvh!important;
+    border:0!important;
+    border-radius:0!important;
+    padding:
+      calc(8px + env(safe-area-inset-top))
+      calc(8px + env(safe-area-inset-right))
+      calc(8px + env(safe-area-inset-bottom))
+      calc(8px + env(safe-area-inset-left))!important;
+  }
+  .chat-list{
+    font-size:13px;
+  }
+  .chat-compose{
+    grid-template-columns:1fr 58px!important;
+  }
+}
+
+/* 탐사에서도 모바일 조이스틱 표시 */
+.expedition-ui:not(.hidden) ~ .mobile{
+  z-index:130!important;
+}
+
+
+
+/* =========================================================
+   v11 mutants
+========================================================= */
+.mutant-warning{
+  position:fixed;
+  left:50%;
+  top:calc(12px + env(safe-area-inset-top));
+  transform:translateX(-50%);
+  z-index:120;
+  padding:8px 12px;
+  border:1px solid #a95446;
+  background:rgba(61,17,13,.90);
+  color:#ffb0a3;
+  font-weight:900;
+  animation:mutantPulse .8s infinite alternate;
+}
+
+@keyframes mutantPulse{
+  from{opacity:.65}
+  to{opacity:1}
+}
+
+.weapon-row{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:center;
+  padding:7px 0;
+  border-bottom:1px solid rgba(255,255,255,.09);
+}
