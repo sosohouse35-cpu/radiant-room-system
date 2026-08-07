@@ -16,10 +16,16 @@
 
 <div id="statusPanel" class="status-panel hidden">
   <h3>STATUS</h3>
-  <div>HP <b id="hpValue">100 / 100</b></div>
-  <div>Sanity <b id="sanityValue">0 SP</b></div>
-  <div>Hunger <b id="hungerValue">100%</b></div>
-  <div>Thirst <b id="thirstValue">100%</b></div>
+  <div class="stat-row"><span>HP</span><b id="hpValue">100 / 100</b></div>
+  <div class="status-meter"><i id="hpBar"></i></div>
+
+  <div class="stat-row"><span>Sanity</span><b id="sanityValue">0 SP</b></div>
+
+  <div class="stat-row"><span>Hunger</span><b id="hungerValue">100%</b></div>
+  <div class="status-meter"><i id="hungerBar"></i></div>
+
+  <div class="stat-row"><span>Thirst</span><b id="thirstValue">100%</b></div>
+  <div class="status-meter"><i id="thirstBar"></i></div>
   <div>Status <b id="conditionValue">안정</b></div>
   <div>Day <b id="statusDay">1</b></div>
 </div>
@@ -33,11 +39,28 @@
   <div class="acts">
     <button id="mPick">줍기</button>
     <button id="mStore">보관</button>
-    <button id="mStair">계단</button>
+    <button id="mStair">계단</button><button id="mSwing">공격</button>
   </div>
 </div>
 
 <div id="fadeOverlay" class="fade-overlay hidden"></div>
+
+
+<div id="expeditionUI" class="expedition-ui hidden">
+  <canvas id="expeditionCanvas"></canvas>
+
+  <div id="mutantWarning" class="mutant-warning hidden">⚠ 돌연변이 접근 중</div>
+<div class="expedition-hud">
+    <strong id="expeditionTitle">식료품점 탐사</strong>
+    <span id="expeditionDay">DAY 1</span>
+  </div>
+
+  <button id="returnBunkerButton" class="return-bunker-button" type="button">벙커로 귀환</button>
+
+  <button id="expeditionPrompt" class="expedition-prompt hidden" type="button">E · 줍기</button>
+
+  <button id="swingButton" class="swing-button hidden" type="button">휘두르기</button>
+</div>
 
 <div id="bunkerUI" class="bunker-ui hidden">
   <canvas id="bunkerCanvas"></canvas>
