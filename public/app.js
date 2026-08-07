@@ -21,7 +21,9 @@ const ITEM_NAME={beans:"통조림",water:"물",soap:"비누",tape:"테이프",tr
 let grids={},furn={},players={},items=[],me={},floor=1,bunker,defs={},keys=new Set(),near=null,ends=0,running=false,last=0,lastSend=0;
 let day=1,sanity=0,bounty=0,bountyLevel=1,bunkerStock={},weapons={},power=100,securityState="LOCKED";
 let hp=100,hunger=100,thirst=100;
-let bunkerPlayer={x:265,y:515};
+let bunkerPlayer={x:330,y:560};
+let bunkerOthers={};
+let lastBunkerSend=0;
 let bunkerKeys=new Set();
 let bunkerRunning=false;
 let bunkerNear=null;
@@ -447,26 +449,35 @@ const BUNKER_OBJECTS = [
   {id:"blueprints",label:"블루프린트",x:520,y:532,w:150,h:54,solid:true,kind:"blueprint"},
   {id:"power",label:"전력 공급",x:760,y:365,w:102,h:76,solid:true,kind:"power"},
   {id:"water",label:"물",x:792,y:468,w:70,h:120,solid:true,kind:"water"},
-  {id:"vent",label:"환풍구",x:724,y:620,w:138,h:36,solid:true,kind:"vent"},
+
+  /* 환풍구는 3개 */
+  {id:"vent1",label:"환풍구 1",x:710,y:610,w:46,h:38,solid:true,kind:"vent"},
+  {id:"vent2",label:"환풍구 2",x:760,y:610,w:46,h:38,solid:true,kind:"vent"},
+  {id:"vent3",label:"환풍구 3",x:810,y:610,w:46,h:38,solid:true,kind:"vent"},
+
+  /* 계단은 장식 */
   {id:"stairs",label:"계단",x:300,y:610,w:390,h:92,solid:false,kind:"stairs"},
 
-  /* 샤워실은 가구가 아니라 실제 작은 방 */
+  /* 계단 왼쪽 벙커문: 이후 탐사 출발 지점 */
+  {id:"bunkerDoor",label:"벙커문",x:205,y:590,w:70,h:105,solid:true,kind:"door"},
+
+  /* 샤워실은 실제 방 */
   {id:"showerRoom",label:"샤워실",x:665,y:92,w:197,h:240,solid:false,kind:"room"}
 ];
 
 const BUNKER_WALLS = [
-  /* 외벽 */
   {x:125,y:65,w:760,h:16},
   {x:125,y:65,w:16,h:650},
   {x:869,y:65,w:16,h:650},
   {x:125,y:699,w:760,h:16},
 
-  /* 사용자 스케치의 계단 옆 벽 */
+  /* 계단 양옆 벽 */
   {x:285,y:590,w:16,h:125},
   {x:690,y:590,w:16,h:125},
 
-  /* 샤워실 벽 */
-  {x:650,y:80,w:16,h:270},
+  /* 샤워실: 왼쪽 벽 가운데 문 70px를 비움 */
+  {x:650,y:80,w:16,h:82},
+  {x:650,y:232,w:16,h:118},
   {x:650,y:80,w:235,h:16},
   {x:650,y:334,w:235,h:16},
   {x:869,y:80,w:16,h:270}
@@ -612,7 +623,13 @@ function drawBunkerInterior(){
     }else if(o.kind==="vent"){
       bctx.fillStyle="#565b5b";bctx.fillRect(x,y,o.w,o.h);
       bctx.strokeStyle="#262929";
-      for(let i=10;i<o.w;i+=15){bctx.beginPath();bctx.moveTo(x+i,y+5);bctx.lineTo(x+i,y+o.h-5);bctx.stroke()}
+      for(let i=8;i<o.w;i+=10){bctx.beginPath();bctx.moveTo(x+i,y+5);bctx.lineTo(x+i,y+o.h-5);bctx.stroke()}
+    }else if(o.kind==="door"){
+      bctx.fillStyle="#484f4f";bctx.fillRect(x,y,o.w,o.h);
+      bctx.strokeStyle="#111";bctx.lineWidth=4;bctx.strokeRect(x,y,o.w,o.h);
+      bctx.fillStyle="#d9b44a";bctx.beginPath();bctx.arc(x+o.w-14,y+o.h/2,5,0,Math.PI*2);bctx.fill();
+      bctx.fillStyle="#cbd1c9";bctx.fillRect(x+8,y+12,o.w-24,8);
+      bctx.fillRect(x+8,y+o.h-20,o.w-24,8);
     }else if(o.kind==="stairs"){
       bctx.fillStyle="#7c6956";bctx.fillRect(x,y,o.w,o.h);
       bctx.strokeStyle="#ded0b8";
@@ -649,6 +666,20 @@ function drawBunkerInterior(){
   bctx.lineWidth=2;
   bctx.strokeRect(vw/(2*scale)-15,vh/(2*scale)-15,30,30);
 
+  // 벙커에 들어온 다른 방원 표시
+  Object.values(bunkerOthers).forEach(p=>{
+    if(p.id===myId)return;
+    const sx=p.x-camX, sy=p.y-camY;
+    bctx.fillStyle=p.color||"#ccc";
+    bctx.fillRect(sx,sy,30,30);
+    bctx.strokeStyle="#fff";
+    bctx.lineWidth=1.5;
+    bctx.strokeRect(sx,sy,30,30);
+    bctx.fillStyle="#251f19";
+    bctx.font="11px Malgun Gothic";
+    bctx.fillText(p.nickname||"Player",sx-3,sy-6);
+  });
+
   bctx.restore();
   requestAnimationFrame(drawBunkerInterior);
 }
@@ -684,6 +715,8 @@ function bunkerNearestObject(){
 
       $("bunkerPrompt").textContent=
         `E · ${result.label} ${count}개 · ${action}`;
+    }else if(result.id==="bunkerDoor"){
+      $("bunkerPrompt").textContent="E · 벙커문 열기 / 탐사";
     }else{
       $("bunkerPrompt").textContent=`E · ${result.label} 사용`;
     }
@@ -711,6 +744,13 @@ function bunkerMoveLoop(){
   if(!bunkerBlocked(bunkerPlayer.x,ny)) bunkerPlayer.y=ny;
 
   bunkerNearestObject();
+
+  const now=performance.now();
+  if(now-lastBunkerSend>70){
+    ioClient.emit("bunker-move",{x:bunkerPlayer.x,y:bunkerPlayer.y});
+    lastBunkerSend=now;
+  }
+
   requestAnimationFrame(bunkerMoveLoop);
 }
 
@@ -882,8 +922,23 @@ function interactBunker(){
     return;
   }
 
+  if(bunkerNear.id==="bunkerDoor"){
+    toast("벙커문: 탐사 기능 준비 중");
+    return;
+  }
+
+  if(["vent1","vent2","vent3"].includes(bunkerNear.id)){
+    toast(`${bunkerNear.label}: 정상 작동 중`);
+    return;
+  }
+
   toast(`${bunkerNear.label}`);
 }
+
+
+$("bunkerPrompt").addEventListener("click",()=>{
+  if(bunkerRunning)interactBunker();
+});
 
 addEventListener("keydown",e=>{
   if(!bunkerRunning)return;
@@ -902,7 +957,19 @@ function enterBunkerScene(){
 
   // 상태책은 벙커 안에서만 표시
   $("bookButton").classList.remove("hidden");
+  $("messageButton").classList.remove("hidden");
   $("statusPanel").classList.add("hidden");
+
+  // 모바일 조이스틱은 벙커에서도 유지
+  const mobileControls=document.querySelector(".mobile");
+  if(mobileControls)mobileControls.style.display="block";
+
+  ioClient.emit("get-bunker-players",r=>{
+    if(r?.ok){
+      bunkerOthers={};
+      r.players.forEach(p=>bunkerOthers[p.id]=p);
+    }
+  });
 
   // 계단은 장식용이며, 벙커 진입 시 계단의 위쪽에서 시작
   bunkerPlayer.x=330;
@@ -919,6 +986,23 @@ function enterBunkerScene(){
     },350);
   });
 }
+
+
+$("messageButton").onclick=()=>{
+  ioClient.emit("get-messages",r=>{
+    if(!r?.ok)return toast("메시지를 불러올 수 없습니다.");
+    $("messageList").innerHTML=r.messages.length
+      ? r.messages.map(m=>`<div class="message-card"><b>${m.title}</b><span>${m.body}</span></div>`).join("")
+      : '<div class="message-card">새 메시지가 없습니다.</div>';
+    $("messagePanel").classList.remove("hidden");
+  });
+};
+
+$("messageClose").onclick=()=>$("messagePanel").classList.add("hidden");
+
+ioClient.on("bunker-player-moved",p=>{
+  bunkerOthers[p.id]={...(bunkerOthers[p.id]||{}),...p};
+});
 
 ioClient.on("scavenge-result",d=>{
   day=d.day||day;
@@ -966,7 +1050,12 @@ ioClient.on("bunker-state",d=>{
   securityState=d.security||securityState;
   updateStatusUI();
 });
-ioClient.on("game-started",d=>{show("game");$("bookButton").classList.add("hidden");$("statusPanel").classList.add("hidden");build();players={};d.players.forEach(p=>players[p.id]={...p});me={...players[myId],hands:[],stored:[]};floor=1;bunker=d.bunker;defs=d.itemDefs;items=d.items;ends=d.endsAt;
+ioClient.on("game-started",d=>{show("game");
+$("bookButton").classList.add("hidden");
+$("messageButton").classList.add("hidden");
+$("statusPanel").classList.add("hidden");
+$("messagePanel").classList.add("hidden");
+build();players={};d.players.forEach(p=>players[p.id]={...p});me={...players[myId],hands:[],stored:[]};floor=1;bunker=d.bunker;defs=d.itemDefs;items=d.items;ends=d.endsAt;
 day=d.day||1;sanity=d.sanity||0;bounty=d.bounty||0;bountyLevel=d.bountyLevel||1;bunkerStock=d.bunkerStock||{};weapons=d.weapons||{};power=d.power??100;securityState=d.security||"LOCKED";
 updateStatusUI();$("timer").textContent="60";renderSlots();running=true;last=performance.now();requestAnimationFrame(loop)});
 ioClient.on("player-moved",d=>{if(players[d.id])Object.assign(players[d.id],d)});ioClient.on("item-taken",d=>{let i=items.find(x=>x.id===d.itemId);if(i)i.taken=true;if(d.playerId===myId){me.hands=d.hands;renderSlots()}});ioClient.on("items-deposited",d=>{if(d.playerId===myId){me.hands=d.hands;me.stored=d.stored;renderSlots()}});
