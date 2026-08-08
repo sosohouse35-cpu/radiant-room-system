@@ -1,28 +1,223 @@
 "use strict";
 const ioClient=io(),$=id=>document.getElementById(id);
+
 let room=null,myId=null;
-const show=id=>["home","lobby","game"].forEach(x=>$(x).classList.toggle("active",x===id));
-function toast(t){$("toast").textContent=t;$("toast").classList.add("show");setTimeout(()=>$("toast").classList.remove("show"),1800)}
-$("new").onclick=()=>$("dlg").showModal();
-$("form").onsubmit=e=>{e.preventDefault();ioClient.emit("create-room",{nickname:$("nick").value,roomName:$("title").value,maxPlayers:$("max").value},joined)};
-$("join").onclick=()=>ioClient.emit("join-room",{nickname:$("nick").value,code:$("code").value.toUpperCase()},joined);
-function joined(r){if(!r.ok)return toast(r.message);room=r.room;myId=r.myId;renderLobby();show("lobby");$("dlg").close()}
-function renderLobby(){if(!room)return;$("roomName").textContent=room.name;$("roomCode").textContent=room.code;$("players").innerHTML=room.players.map(p=>`<div>${p.nickname}${p.id===room.hostId?" (방장)":""} ${p.ready?"✓":""}</div>`).join("");$("start").style.display=myId===room.hostId?"inline-block":"none";$("ready").style.display=myId===room.hostId?"none":"inline-block"}
-$("ready").onclick=()=>ioClient.emit("toggle-ready",r=>{if(!r.ok)toast("변경 실패")});
-$("start").onclick=()=>ioClient.emit("start-game",r=>{if(!r.ok)toast(r.message)});
-ioClient.on("room-list",rs=>$("rooms").innerHTML=rs.map(r=>`<div><button data-c="${r.code}">${r.name} (${r.playerCount}/${r.maxPlayers})</button></div>`).join(""));
-$("rooms").onclick=e=>{if(e.target.dataset.c)ioClient.emit("join-room",{nickname:$("nick").value,code:e.target.dataset.c},joined)};
+const sessionId=localStorage.getItem("afterglow-session") ||
+  (crypto.randomUUID ? crypto.randomUUID() : `s-${Date.now()}-${Math.random()}`);
+localStorage.setItem("afterglow-session",sessionId);
+let selectedColor=localStorage.getItem("afterglow-color")||"#4dabf7";
+let currentPublicLobby=null;
+let publicLobbyPlayers={};
+let publicLobbyPlayer={x:750,y:500};
+let publicLobbyRunning=false;
+let publicLobbyLastSend=0;
+
+const show=id=>["home","publicLobby","lobby","game"].forEach(x=>{
+  const el=$(x);
+  if(el)el.classList.toggle("active",x===id);
+});
+
+function toast(t){
+  $("toast").textContent=t;
+  $("toast").classList.add("show");
+  setTimeout(()=>$("toast").classList.remove("show"),1800);
+}
+
+$("nick").value=localStorage.getItem("afterglow-nickname")||"";
+
+document.querySelectorAll("#colorPicker [data-color]").forEach(button=>{
+  button.style.background=button.dataset.color;
+  button.classList.toggle("selected",button.dataset.color===selectedColor);
+
+  button.onclick=()=>{
+    selectedColor=button.dataset.color;
+    localStorage.setItem("afterglow-color",selectedColor);
+
+    document.querySelectorAll("#colorPicker [data-color]").forEach(b=>
+      b.classList.toggle("selected",b===button)
+    );
+  };
+});
+
+function ensureProfile(){
+  const name=$("nick").value.trim();
+  if(!name){
+    toast("닉네임을 입력하세요.");
+    return false;
+  }
+  localStorage.setItem("afterglow-nickname",name);
+  return true;
+}
+
+function renderPublicLobbyList(list){
+  const host=$("publicLobbyList");
+  if(!host)return;
+
+  host.innerHTML="";
+
+  list.forEach(l=>{
+    const card=document.createElement("div");
+    card.className="public-lobby-card";
+
+    const info=document.createElement("span");
+    info.textContent=`LOBBY ${l.id} · ${l.playerCount}/24`;
+
+    const button=document.createElement("button");
+    button.textContent="입장";
+    button.onclick=()=>joinPublicLobby(l.id);
+
+    card.append(info,button);
+    host.appendChild(card);
+  });
+}
+
+function joinPublicLobby(lobbyId){
+  if(!ensureProfile())return;
+
+  ioClient.emit("join-public-lobby",{
+    lobbyId,
+    nickname:$("nick").value.trim(),
+    color:selectedColor
+  },r=>{
+    if(!r?.ok)return toast(r?.message||"로비 입장 실패");
+
+    myId=r.myId;
+    currentPublicLobby=r.lobby.id;
+    publicLobbyPlayers={};
+
+    r.lobby.players.forEach(p=>{
+      publicLobbyPlayers[p.id]={...p};
+    });
+
+    const mine=publicLobbyPlayers[myId];
+    publicLobbyPlayer={
+      x:mine?.x??750,
+      y:mine?.y??500
+    };
+
+    $("publicLobbyTitle").textContent=`LOBBY ${currentPublicLobby}`;
+    $("publicChatList").innerHTML="";
+    (r.messages||[]).forEach(renderPublicLobbyChat);
+
+    show("publicLobby");
+    publicLobbyRunning=true;
+    resizePublicLobbyCanvas();
+    requestAnimationFrame(drawPublicLobby);
+    requestAnimationFrame(publicLobbyLoop);
+    applyMobileControlsVisibility();
+  });
+}
+
+ioClient.on("public-lobby-list",renderPublicLobbyList);
+
+$("new").onclick=()=>{
+  if(!ensureProfile())return;
+  $("dlg").showModal();
+};
+
+$("form").onsubmit=e=>{
+  e.preventDefault();
+
+  ioClient.emit("create-room",{
+    nickname:$("nick").value.trim(),
+    roomName:$("title").value,
+    maxPlayers:$("max").value,
+    color:selectedColor,
+    sessionId
+  },joined);
+};
+
+$("join").onclick=()=>{
+  if(!ensureProfile())return;
+
+  ioClient.emit("join-room",{
+    nickname:$("nick").value.trim(),
+    code:$("code").value.toUpperCase(),
+    color:selectedColor,
+    sessionId
+  },joined);
+};
+
+function joined(r){
+  if(!r?.ok)return toast(r?.message||"입장 실패");
+
+  publicLobbyRunning=false;
+  room=r.room;
+  myId=r.myId;
+
+  renderLobby();
+  show("lobby");
+
+  if($("dlg").open)$("dlg").close();
+}
+
+function renderLobby(){
+  if(!room)return;
+
+  $("roomName").textContent=room.name;
+  $("roomCode").textContent=room.code;
+
+  $("players").innerHTML=room.players.map(p=>
+    `<div>${p.nickname}${p.id===room.hostId?" (방장)":""} ${p.ready?"✓":""}</div>`
+  ).join("");
+
+  $("start").style.display=myId===room.hostId?"inline-block":"none";
+  $("ready").style.display=myId===room.hostId?"none":"inline-block";
+}
+
+$("ready").onclick=()=>ioClient.emit("toggle-ready",r=>{
+  if(!r?.ok)toast("변경 실패");
+});
+
+$("start").onclick=()=>ioClient.emit("start-game",r=>{
+  if(!r?.ok)toast(r?.message||"시작 실패");
+});
+
 ioClient.on("room-updated",r=>{
   room=r;
   renderLobby();
 
-  const activeIds=new Set(r.players.map(p=>p.id));
-  Object.keys(bunkerOthers).forEach(id=>{
-    if(!activeIds.has(id)){
-      delete bunkerOthers[id];
+  if(typeof bunkerOthers!=="undefined"){
+    const activeIds=new Set(r.players.map(p=>p.id));
+    Object.keys(bunkerOthers).forEach(id=>{
+      if(!activeIds.has(id))delete bunkerOthers[id];
+    });
+  }
+});
+
+ioClient.on("connect",()=>{
+  $("status").textContent="연결됨";
+
+  ioClient.emit("reconnect-room",sessionId,r=>{
+    if(!r?.ok)return;
+
+    room=r.room;
+    myId=r.myId;
+
+    if(r.player){
+      hp=r.player.hp??hp;
+      hunger=r.player.hunger??hunger;
+      thirst=r.player.thirst??thirst;
+      hygiene=r.player.hygiene??hygiene;
+      equippedWeapon=r.player.equipped??equippedWeapon;
+
+      if(r.player.inExpedition && expeditionRunning){
+        expeditionPlayer.x=r.player.expeditionX??expeditionPlayer.x;
+        expeditionPlayer.y=r.player.expeditionY??expeditionPlayer.y;
+        expeditionItems=r.expeditionItems||expeditionItems;
+        expeditionMutants={};
+        (r.expeditionMutants||[]).forEach(m=>expeditionMutants[m.id]={...m});
+      }
+
+      if(r.player.inBunker && bunkerRunning){
+        bunkerPlayer.x=r.player.bunkerX??bunkerPlayer.x;
+        bunkerPlayer.y=r.player.bunkerY??bunkerPlayer.y;
+      }
     }
+
+    updateStatusUI();
   });
-});ioClient.on("connect",()=>{$("status").textContent="연결됨"});
+});
 
 const canvas=$("canvas"),ctx=canvas.getContext("2d");
 const W=2400,H=1600,T=40,P=30,SPEED=235,COLS=W/T,ROWS=H/T;
@@ -30,7 +225,7 @@ const ICON={beans:"🥫",water:"💧",soap:"🧼",tape:"🩹",trap:"🪤",spray:
 const ITEM_NAME={beans:"통조림",water:"물",soap:"비누",tape:"테이프",trap:"덫",spray:"살충제",medkit:"메디킷",battery:"배터리",flashlight:"손전등",mask:"방독면",axe:"도끼",backpack:"가방",blueprint:"블루프린트",toolbox:"공구함",map:"지도",radio:"라디오"};
 let grids={},furn={},players={},items=[],me={},floor=1,bunker,defs={},keys=new Set(),near=null,ends=0,running=false,last=0,lastSend=0;
 let day=1,sanity=0,bounty=0,bountyLevel=1,bunkerStock={},weapons={},power=100,securityState="LOCKED";
-let hp=100,hunger=100,thirst=100;
+let hp=100,hunger=100,thirst=100,hygiene=100;
 let bunkerPlayer={x:330,y:560};
 
 let expeditionRunning=false;
@@ -45,6 +240,8 @@ let equippedWeapon=null;
 let swingUntil=0;
 let dayStartedAt=Date.now();
 let dayLengthMs=120000;
+let expeditionInviteEndsAt=0;
+let expeditionInviteTimerHandle=null;
 let bunkerOthers={};
 let lastBunkerSend=0;
 let bunkerKeys=new Set();
@@ -70,6 +267,251 @@ const stairSystems = {
 let stairCooldownUntil = 0;
 let joystickX = 0;
 let joystickY = 0;
+
+// =========================================================
+// 공용 로비
+// =========================================================
+const publicLobbyCanvas=$("publicLobbyCanvas");
+const plctx=publicLobbyCanvas.getContext("2d");
+
+function resizePublicLobbyCanvas(){
+  const d=devicePixelRatio||1;
+  const vw=visualViewport?.width||innerWidth;
+  const vh=visualViewport?.height||innerHeight;
+
+  publicLobbyCanvas.width=Math.round(vw*d);
+  publicLobbyCanvas.height=Math.round(vh*d);
+  publicLobbyCanvas.style.width=`${vw}px`;
+  publicLobbyCanvas.style.height=`${vh}px`;
+  plctx.setTransform(d,0,0,d,0,0);
+}
+
+function drawPublicLobby(){
+  if(!publicLobbyRunning)return;
+
+  const vw=visualViewport?.width||innerWidth;
+  const vh=visualViewport?.height||innerHeight;
+  const camX=publicLobbyPlayer.x-vw/2;
+  const camY=publicLobbyPlayer.y-vh/2;
+
+  plctx.fillStyle="#536a4b";
+  plctx.fillRect(0,0,vw,vh);
+
+  // 넓은 공용 광장
+  plctx.fillStyle="#898878";
+  plctx.fillRect(390-camX,240-camY,720,510);
+  plctx.strokeStyle="#30342d";
+  plctx.lineWidth=6;
+  plctx.strokeRect(390-camX,240-camY,720,510);
+
+  // 길
+  plctx.fillStyle="#77796f";
+  plctx.fillRect(0-camX,450-camY,1500,120);
+  plctx.fillRect(690-camX,0-camY,120,1000);
+
+  // 벤치 / 나무 / 표지판
+  const deco=[
+    {x:460,y:300,w:120,h:32,c:"#74553b"},
+    {x:920,y:300,w:120,h:32,c:"#74553b"},
+    {x:460,y:660,w:120,h:32,c:"#74553b"},
+    {x:920,y:660,w:120,h:32,c:"#74553b"},
+    {x:270,y:260,w:75,h:75,c:"#315c31"},
+    {x:1150,y:260,w:75,h:75,c:"#315c31"},
+    {x:270,y:720,w:75,h:75,c:"#315c31"},
+    {x:1150,y:720,w:75,h:75,c:"#315c31"},
+    {x:700,y:420,w:100,h:70,c:"#4d4a40"}
+  ];
+
+  deco.forEach(o=>{
+    plctx.fillStyle=o.c;
+    plctx.fillRect(o.x-camX,o.y-camY,o.w,o.h);
+  });
+
+  Object.values(publicLobbyPlayers).forEach(p=>{
+    if(p.id===myId)return;
+
+    plctx.fillStyle=p.color;
+    plctx.fillRect(p.x-camX,p.y-camY,30,30);
+
+    plctx.fillStyle="#fff";
+    plctx.font="11px sans-serif";
+    plctx.fillText(p.nickname,p.x-camX-4,p.y-camY-7);
+  });
+
+  plctx.fillStyle=selectedColor;
+  plctx.fillRect(vw/2-15,vh/2-15,30,30);
+  plctx.strokeStyle="#fff";
+  plctx.lineWidth=2;
+  plctx.strokeRect(vw/2-15,vh/2-15,30,30);
+
+  requestAnimationFrame(drawPublicLobby);
+}
+
+function publicLobbyLoop(t){
+  if(!publicLobbyRunning)return;
+
+  let dx=(keys.has("d")||keys.has("arrowright")?1:0)-
+         (keys.has("a")||keys.has("arrowleft")?1:0);
+
+  let dy=(keys.has("s")||keys.has("arrowdown")?1:0)-
+         (keys.has("w")||keys.has("arrowup")?1:0);
+
+  if(Math.abs(joystickX)>.03||Math.abs(joystickY)>.03){
+    dx=joystickX;
+    dy=joystickY;
+  }else if(dx&&dy){
+    dx*=.707;
+    dy*=.707;
+  }
+
+  publicLobbyPlayer.x=Math.max(30,Math.min(1470,publicLobbyPlayer.x+dx*3.4));
+  publicLobbyPlayer.y=Math.max(30,Math.min(970,publicLobbyPlayer.y+dy*3.4));
+
+  if(t-publicLobbyLastSend>70){
+    ioClient.emit("public-lobby-move",{
+      x:publicLobbyPlayer.x,
+      y:publicLobbyPlayer.y
+    });
+    publicLobbyLastSend=t;
+  }
+
+  requestAnimationFrame(publicLobbyLoop);
+}
+
+ioClient.on("public-lobby-player-joined",p=>{
+  publicLobbyPlayers[p.id]=p;
+});
+
+ioClient.on("public-lobby-player-moved",p=>{
+  publicLobbyPlayers[p.id]={
+    ...(publicLobbyPlayers[p.id]||{}),
+    ...p
+  };
+});
+
+ioClient.on("public-lobby-player-left",d=>{
+  delete publicLobbyPlayers[d.id];
+});
+
+$("leavePublicLobby").onclick=()=>{
+  publicLobbyRunning=false;
+  currentPublicLobby=null;
+  show("home");
+};
+
+function renderPublicLobbyChat(m){
+  const row=document.createElement("div");
+  row.className="chat-message"+(m.playerId===myId?" mine":"");
+
+  const head=document.createElement("span");
+  head.className="chat-name";
+  head.textContent=m.nickname;
+
+  const body=document.createElement("div");
+  body.textContent=m.text;
+
+  row.append(head,body);
+  $("publicChatList").appendChild(row);
+  $("publicChatList").scrollTop=$("publicChatList").scrollHeight;
+}
+
+ioClient.on("public-lobby-message",renderPublicLobbyChat);
+
+$("publicChatButton").onclick=()=>{
+  $("publicChatPanel").classList.remove("hidden");
+  document.body.classList.add("chat-open");
+  resetJoystick();
+  setTimeout(()=>$("publicChatInput").focus(),70);
+};
+
+$("publicChatClose").onclick=()=>{
+  $("publicChatPanel").classList.add("hidden");
+  document.body.classList.remove("chat-open");
+};
+
+function sendPublicChat(){
+  const text=$("publicChatInput").value.trim();
+  if(!text)return;
+
+  ioClient.emit("public-lobby-message",text,r=>{
+    if(!r?.ok)return toast(r?.message||"전송 실패");
+    $("publicChatInput").value="";
+  });
+}
+
+$("publicChatSend").onclick=sendPublicChat;
+$("publicChatInput").addEventListener("keydown",e=>{
+  if(e.key==="Enter"){
+    e.preventDefault();
+    sendPublicChat();
+  }
+});
+
+
+const lobbyJoyBase=$("lobbyJoystickBase");
+const lobbyJoyKnob=$("lobbyJoystickKnob");
+let lobbyJoyPointer=null;
+
+function resetLobbyJoystick(){
+  joystickX=0;
+  joystickY=0;
+  lobbyJoyKnob.style.transform="translate(-50%, -50%)";
+}
+
+function updateLobbyJoystick(clientX,clientY){
+  const rect=lobbyJoyBase.getBoundingClientRect();
+  const cx=rect.left+rect.width/2;
+  const cy=rect.top+rect.height/2;
+
+  let dx=clientX-cx;
+  let dy=clientY-cy;
+
+  const max=rect.width/2-24;
+  const distance=Math.hypot(dx,dy);
+
+  if(distance>max){
+    dx=dx/distance*max;
+    dy=dy/distance*max;
+  }
+
+  joystickX=dx/max;
+  joystickY=dy/max;
+
+  lobbyJoyKnob.style.transform=
+    `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+}
+
+lobbyJoyBase.addEventListener("pointerdown",e=>{
+  e.preventDefault();
+  lobbyJoyPointer=e.pointerId;
+  lobbyJoyBase.setPointerCapture(e.pointerId);
+  updateLobbyJoystick(e.clientX,e.clientY);
+});
+
+lobbyJoyBase.addEventListener("pointermove",e=>{
+  if(e.pointerId!==lobbyJoyPointer)return;
+  e.preventDefault();
+  updateLobbyJoystick(e.clientX,e.clientY);
+});
+
+function endLobbyJoy(e){
+  if(lobbyJoyPointer!==null && e.pointerId!==lobbyJoyPointer)return;
+  lobbyJoyPointer=null;
+  resetLobbyJoystick();
+}
+lobbyJoyBase.addEventListener("pointerup",endLobbyJoy);
+lobbyJoyBase.addEventListener("pointercancel",endLobbyJoy);
+lobbyJoyBase.addEventListener("lostpointercapture",()=>{
+  lobbyJoyPointer=null;
+  resetLobbyJoystick();
+});
+
+addEventListener("resize",resizePublicLobbyCanvas);
+if(window.visualViewport){
+  visualViewport.addEventListener("resize",resizePublicLobbyCanvas);
+}
+
+
 function resize(){
   const d=devicePixelRatio||1;
   const vw=window.visualViewport?.width||innerWidth;
@@ -471,6 +913,7 @@ function updateStatusUI(){
   $("sanityValue").textContent=`${sanity} SP`;
   $("hungerValue").textContent=`${Math.round(hunger)}%`;
   $("thirstValue").textContent=`${Math.round(thirst)}%`;
+  if($("hygieneValue"))$("hygieneValue").textContent=`${Math.round(hygiene)}%`;
   $("statusDay").textContent=day;
 
   let condition="안정";
@@ -484,6 +927,7 @@ function updateStatusUI(){
   if($("hpBar"))$("hpBar").style.width=`${Math.max(0,Math.min(100,hp))}%`;
   if($("hungerBar"))$("hungerBar").style.width=`${Math.max(0,Math.min(100,hunger))}%`;
   if($("thirstBar"))$("thirstBar").style.width=`${Math.max(0,Math.min(100,thirst))}%`;
+  if($("hygieneBar"))$("hygieneBar").style.width=`${Math.max(0,Math.min(100,hygiene))}%`;
 }
 
 $("bookButton").onclick=()=>{
@@ -517,10 +961,10 @@ const BUNKER_OBJECTS = [
 ];
 
 const BUNKER_WALLS = [
-  {x:125,y:65,w:760,h:16},
-  {x:125,y:65,w:16,h:650},
-  {x:869,y:65,w:16,h:650},
-  {x:125,y:699,w:760,h:16},
+  {x:100,y:60,w:850,h:16},
+  {x:100,y:60,w:16,h:720},
+  {x:934,y:60,w:16,h:720},
+  {x:100,y:764,w:850,h:16},
 
   /* 계단 양옆 벽 */
   {x:285,y:590,w:16,h:125},
@@ -546,7 +990,7 @@ function bunkerRectHit(px,py,w=30,h=30,rect,padding=4){
 
 function bunkerBlocked(nextX,nextY){
   // 바깥 경계
-  if(nextX<145 || nextY<85 || nextX+30>855 || nextY+30>690) return true;
+  if(nextX<115 || nextY<75 || nextX+30>925 || nextY+30>755) return true;
 
   // 가구 충돌
   for(const o of BUNKER_OBJECTS){
@@ -609,8 +1053,8 @@ function drawBunkerInterior(){
   const drawW=vw/scale;
   const drawH=vh/scale;
 
-  // 콘크리트 바닥
-  bctx.fillStyle="#bcb09b";
+  // 벙커 바깥은 완전 검정
+  bctx.fillStyle="#000";
   bctx.fillRect(0,0,drawW,drawH);
 
   bctx.strokeStyle="rgba(66,58,48,.16)";
@@ -622,9 +1066,37 @@ function drawBunkerInterior(){
     bctx.beginPath();bctx.moveTo(0,y);bctx.lineTo(drawW,y);bctx.stroke();
   }
 
-  // 벙커 내부 바닥
-  bctx.fillStyle="#cfc4ae";
-  bctx.fillRect(141-camX,81-camY,728,618);
+  // 넓어진 철제 벙커 바닥
+  bctx.fillStyle="#747a7d";
+  bctx.fillRect(100-camX,60-camY,850,720);
+
+  // 철판 이음선
+  bctx.strokeStyle="rgba(35,40,43,.42)";
+  bctx.lineWidth=1;
+
+  for(let x=100;x<=950;x+=85){
+    bctx.beginPath();
+    bctx.moveTo(x-camX,60-camY);
+    bctx.lineTo(x-camX,780-camY);
+    bctx.stroke();
+  }
+
+  for(let y=60;y<=780;y+=72){
+    bctx.beginPath();
+    bctx.moveTo(100-camX,y-camY);
+    bctx.lineTo(950-camX,y-camY);
+    bctx.stroke();
+  }
+
+  // 리벳
+  bctx.fillStyle="rgba(33,38,41,.62)";
+  for(let x=110;x<950;x+=85){
+    for(let y=70;y<780;y+=72){
+      bctx.beginPath();
+      bctx.arc(x-camX,y-camY,2.2,0,Math.PI*2);
+      bctx.fill();
+    }
+  }
 
   // 샤워실 별도 바닥
   const shower=BUNKER_OBJECTS.find(o=>o.id==="showerRoom");
@@ -767,7 +1239,7 @@ function bunkerNearestObject(){
 
   for(const o of BUNKER_OBJECTS){
     // 계단은 장식용
-    if(o.id==="stairs" || o.id==="showerRoom") continue;
+    if(o.id==="stairs") continue;
 
     const cx=o.x+o.w/2,cy=o.y+o.h/2;
     const d=Math.hypot(bunkerPlayer.x-cx,bunkerPlayer.y-cy);
@@ -793,8 +1265,10 @@ function bunkerNearestObject(){
 
       $("bunkerPrompt").textContent=
         `E · ${result.label} ${count}개 · ${action}`;
+    }else if(result.id==="showerRoom"){
+      $("bunkerPrompt").textContent=`E · 샤워하기 · 비누 ${bunkerStock.soap||0}개`;
     }else if(result.id==="bunkerDoor"){
-      $("bunkerPrompt").textContent="E · 벙커문 열기 / 탐사";
+      $("bunkerPrompt").textContent="E · 식료품점 탐사 모집";
     }else{
       $("bunkerPrompt").textContent=`E · ${result.label} 사용`;
     }
@@ -980,11 +1454,13 @@ function consumeBunker(type){
       hp=r.stats.hp??hp;
       hunger=r.stats.hunger??hunger;
       thirst=r.stats.thirst??thirst;
+      hygiene=r.stats.hygiene??hygiene;
     }
 
     if(type==="water")toast("물을 마셨습니다. 갈증 +70");
     else if(type==="beans")toast("통조림을 먹었습니다. 허기 +50");
     else if(type==="medkit")toast("메디킷을 사용했습니다. HP 완전 회복");
+    else if(type==="soap")toast("비누를 사용했습니다. 깨끗함 100%");
 
     updateStatusUI();
   });
@@ -1029,7 +1505,16 @@ function interactBunker(){
   }
 
   if(bunkerNear.id==="bunkerDoor"){
-    startGroceryExpedition();
+    requestExpedition();
+    return;
+  }
+
+  if(bunkerNear.id==="showerRoom"){
+    if((bunkerStock.soap||0)<=0){
+      toast("비누가 없습니다.");
+      return;
+    }
+    consumeBunker("soap");
     return;
   }
 
@@ -1503,50 +1988,58 @@ function takeExpeditionItem(){
   });
 }
 
-function startGroceryExpedition(){
-  ioClient.emit("start-expedition",r=>{
+function requestExpedition(){
+  ioClient.emit("request-expedition",r=>{
     if(!r?.ok){
-      toast(r?.message||"탐사 시작 실패");
-      return;
+      toast(r?.message||"탐사 모집 실패");
     }
-
-    bunkerRunning=false;
-    $("bunkerUI").classList.add("hidden");
-    $("bookButton").classList.add("hidden");
-    $("messageButton").classList.add("hidden");
-    $("statusPanel").classList.add("hidden");
-
-    expeditionItems=r.items;
-    expeditionMutants={};
-    (r.mutants||[]).forEach(m=>expeditionMutants[m.id]={...m});
-
-    expeditionPlayer={
-      x:r.player.x,
-      y:r.player.y
-    };
-    me.hands=[...r.player.hands];
-    equippedWeapon=r.player.equipped||equippedWeapon;
-
-    expeditionOthers={};
-    expeditionRunning=true;
-
-    $("expeditionUI").classList.remove("hidden");
-    $("expeditionDay").textContent=`DAY ${day}`;
-
-    if(equippedWeapon){
-      $("swingButton").classList.remove("hidden");
-    }
-
-    resizeExpeditionCanvas();
-    renderSlots();
-    applyMobileControlsVisibility();
-    drawExpedition();
-    expeditionLoop();
   });
 }
 
+function beginExpeditionFromServer(data){
+  const participants=data.participantIds||[];
+
+  if(!participants.includes(myId)){
+    $("expeditionInvitePanel").classList.add("hidden");
+    return;
+  }
+
+  bunkerRunning=false;
+  $("bunkerUI").classList.add("hidden");
+  $("bookButton").classList.add("hidden");
+  $("messageButton").classList.add("hidden");
+  $("statusPanel").classList.add("hidden");
+  $("expeditionInvitePanel").classList.add("hidden");
+
+  expeditionItems=data.items||[];
+  expeditionMutants={};
+  (data.mutants||[]).forEach(m=>expeditionMutants[m.id]={...m});
+
+  expeditionPlayer={x:250,y:850};
+  expeditionOthers={};
+  expeditionRunning=true;
+  me.hands=[];
+
+  $("expeditionUI").classList.remove("hidden");
+  $("expeditionDay").textContent=`DAY ${day}`;
+
+  if(equippedWeapon){
+    $("swingButton").classList.remove("hidden");
+  }
+
+  resizeExpeditionCanvas();
+  renderSlots();
+  applyMobileControlsVisibility();
+  drawExpedition();
+  expeditionLoop();
+}
+
 function returnToBunker(){
-  ioClient.emit("return-from-expedition",r=>{
+  ioClient.emit("return-from-expedition",{
+    roomCode:room?.code,
+    sessionId,
+    nickname:$("nick").value.trim()
+  },r=>{
     if(!r?.ok){
       toast(r?.message||"귀환 실패");
       return;
@@ -1564,12 +2057,15 @@ function returnToBunker(){
       hp=r.stats.hp??hp;
       hunger=r.stats.hunger??hunger;
       thirst=r.stats.thirst??thirst;
+      hygiene=r.stats.hygiene??hygiene;
     }
 
     bunkerPlayer.x=r.player?.x??330;
     bunkerPlayer.y=r.player?.y??560;
 
     // DAY는 탐사 귀환 때문에 바꾸지 않음
+    expeditionOthers={};
+    expeditionMutants={};
     updateStatusUI();
     enterBunkerScene();
   });
@@ -1625,6 +2121,55 @@ addEventListener("keydown",e=>{
     swingWeapon();
   }
 });
+
+
+function updateExpeditionInviteCountdown(){
+  clearInterval(expeditionInviteTimerHandle);
+
+  const render=()=>{
+    const left=Math.max(0,Math.ceil((expeditionInviteEndsAt-Date.now())/1000));
+    $("expeditionInviteTimer").textContent=left;
+
+    if(left<=0){
+      clearInterval(expeditionInviteTimerHandle);
+    }
+  };
+
+  render();
+  expeditionInviteTimerHandle=setInterval(render,250);
+}
+
+ioClient.on("expedition-invite",d=>{
+  expeditionInviteEndsAt=d.endsAt;
+
+  $("expeditionInviteText").textContent=
+    d.leaderId===myId
+      ? "팀원의 참여를 기다리는 중..."
+      : `${d.leaderName}님이 식료품점 탐사를 준비합니다.`;
+
+  $("expeditionInvitePanel").classList.remove("hidden");
+  updateExpeditionInviteCountdown();
+});
+
+$("expeditionAccept").onclick=()=>{
+  ioClient.emit("respond-expedition",true,r=>{
+    if(!r?.ok)toast(r?.message||"참여 실패");
+    else toast("탐사 참여");
+  });
+};
+
+$("expeditionDecline").onclick=()=>{
+  ioClient.emit("respond-expedition",false,r=>{
+    if(!r?.ok){
+      toast(r?.message||"거절 실패");
+    }else{
+      toast("탐사 거절");
+      $("expeditionInvitePanel").classList.add("hidden");
+    }
+  });
+};
+
+ioClient.on("expedition-started",beginExpeditionFromServer);
 
 ioClient.on("expedition-item-taken",d=>{
   const item=expeditionItems.find(i=>i.id===d.itemId);
@@ -1724,6 +2269,7 @@ ioClient.on("day-changed",d=>{
     hp=mine.hp??hp;
     hunger=mine.hunger??hunger;
     thirst=mine.thirst??thirst;
+    hygiene=mine.hygiene??hygiene;
   }
 
   updateStatusUI();
@@ -1832,6 +2378,7 @@ if(mine){
   hp=mine.hp??100;
   hunger=mine.hunger??100;
   thirst=mine.thirst??100;
+  hygiene=mine.hygiene??100;
   equippedWeapon=mine.equipped||null;
 }
 updateStatusUI();$("timer").textContent="60";renderSlots();running=true;last=performance.now();requestAnimationFrame(loop)});
