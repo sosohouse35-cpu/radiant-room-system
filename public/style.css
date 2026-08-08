@@ -1048,3 +1048,65 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
 #expeditionCanvas,#bunkerCanvas{
   touch-action:none;
 }
+
+
+/* =========================================================
+   v22 lobby/game stability
+========================================================= */
+#publicLobby.active,
+#game.active{
+  display:block!important;
+}
+
+#publicLobbyCanvas{
+  position:absolute!important;
+  inset:0!important;
+  width:100vw!important;
+  height:100dvh!important;
+  z-index:1!important;
+}
+
+#publicLobby .public-lobby-top,
+#publicLobby .public-lobby-actions,
+#publicLobby .public-chat-button,
+#publicLobby .public-lobby-mobile{
+  z-index:20!important;
+}
+
+#lobby.party-overlay{
+  position:fixed!important;
+  left:50%!important;
+  top:50%!important;
+  transform:translate(-50%,-50%)!important;
+  width:min(420px,calc(100vw - 28px))!important;
+  height:auto!important;
+  max-height:75dvh!important;
+  overflow:auto!important;
+  z-index:70!important;
+  background:rgba(17,21,18,.97)!important;
+  border:1px solid #66715d!important;
+  box-shadow:0 14px 45px rgba(0,0,0,.55)!important;
+  padding:14px!important;
+}
+
+#game{
+  position:fixed!important;
+  inset:0!important;
+  width:100vw!important;
+  height:100dvh!important;
+  overflow:hidden!important;
+  background:#000!important;
+}
+
+#canvas,
+#bunkerCanvas,
+#expeditionCanvas{
+  display:block!important;
+}
+
+@media(max-width:760px){
+  #lobby.party-overlay{
+    width:88vw!important;
+    max-height:72dvh!important;
+  }
+}
