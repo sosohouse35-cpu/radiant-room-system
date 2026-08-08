@@ -3,7 +3,65 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="stylesheet" href="style.css"></head>
 <body><main class="shell">
 <header><h1>AFTERGLOW SHELTER</h1><span id="status">연결 중</span></header>
-<section id="home" class="screen active"><div class="panel"><input id="nick" placeholder="닉네임"><button id="new">새 방</button><input id="code" placeholder="방 코드"><button id="join">참가</button></div><div class="panel"><h2>공개방</h2><div id="rooms"></div></div></section>
+<section id="home" class="screen active">
+  <div class="panel profile-panel">
+    <h2>플레이어 설정</h2>
+    <input id="nick" maxlength="14" placeholder="닉네임">
+
+    <div class="color-title">캐릭터 색깔</div>
+    <div id="colorPicker" class="color-picker">
+      <button type="button" data-color="#ff6b6b"></button>
+      <button type="button" data-color="#4dabf7"></button>
+      <button type="button" data-color="#69db7c"></button>
+      <button type="button" data-color="#ffd43b"></button>
+      <button type="button" data-color="#da77f2"></button>
+      <button type="button" data-color="#ffa94d"></button>
+      <button type="button" data-color="#38d9a9"></button>
+      <button type="button" data-color="#f06595"></button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>공용 로비 1-10</h2>
+    <p>로비에 들어가 움직이고 채팅한 뒤 팀 방을 만들 수 있습니다.</p>
+    <div id="publicLobbyList" class="public-lobby-list"></div>
+  </div>
+</section>
+
+<section id="publicLobby" class="screen public-lobby-screen">
+  <canvas id="publicLobbyCanvas"></canvas>
+
+  <div class="public-lobby-top">
+    <strong id="publicLobbyTitle">LOBBY 1</strong>
+    <button id="leavePublicLobby" type="button">로비 선택</button>
+  </div>
+
+  <div class="public-lobby-actions">
+    <button id="new" type="button">팀 방 만들기</button>
+    <input id="code" placeholder="방 코드">
+    <button id="join" type="button">방 참가</button>
+  </div>
+
+  <div id="publicLobbyMobile" class="public-lobby-mobile">
+    <div id="lobbyJoystickBase" class="joystick-base">
+      <div id="lobbyJoystickKnob" class="joystick-knob"></div>
+    </div>
+  </div>
+
+  <button id="publicChatButton" class="public-chat-button" type="button">💬</button>
+
+  <div id="publicChatPanel" class="public-chat-panel hidden">
+    <div class="message-head">
+      <strong>LOBBY CHAT</strong>
+      <button id="publicChatClose" type="button">×</button>
+    </div>
+    <div id="publicChatList" class="chat-list"></div>
+    <div class="chat-compose">
+      <input id="publicChatInput" maxlength="180" placeholder="로비 채팅...">
+      <button id="publicChatSend" type="button">전송</button>
+    </div>
+  </div>
+</section>
 <section id="lobby" class="screen"><div class="panel"><h2 id="roomName"></h2><button id="roomCode"></button><div id="players"></div><button id="ready">준비</button><button id="start">게임 시작</button></div></section>
 <section id="game" class="screen game">
 <canvas id="canvas"></canvas>
@@ -26,6 +84,8 @@
 
   <div class="stat-row"><span>Thirst</span><b id="thirstValue">100%</b></div>
   <div class="status-meter"><i id="thirstBar"></i></div>
+  <div class="stat-row"><span>Hygiene</span><b id="hygieneValue">100%</b></div>
+  <div class="status-meter"><i id="hygieneBar"></i></div>
   <div>Status <b id="conditionValue">안정</b></div>
   <div>Day <b id="statusDay">1</b></div>
 </div>
@@ -45,6 +105,16 @@
 
 <div id="fadeOverlay" class="fade-overlay hidden"></div>
 
+
+<div id="expeditionInvitePanel" class="expedition-invite-panel hidden">
+  <h3>식료품점 탐사 모집</h3>
+  <p id="expeditionInviteText">팀원이 탐사를 준비합니다.</p>
+  <strong id="expeditionInviteTimer">15</strong>
+  <div class="row">
+    <button id="expeditionAccept" type="button">참여</button>
+    <button id="expeditionDecline" type="button">거절</button>
+  </div>
+</div>
 
 <div id="expeditionUI" class="expedition-ui hidden">
   <canvas id="expeditionCanvas"></canvas>
