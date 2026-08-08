@@ -951,3 +951,61 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
     grid-template-columns:1fr 1fr;
   }
 }
+
+
+/* =========================================================
+   v20 expedition additions
+========================================================= */
+.expedition-location-panel{
+  position:fixed;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  z-index:180;
+  width:min(380px,calc(100vw - 28px));
+  padding:14px;
+  background:rgba(16,19,17,.98);
+  color:#eee;
+  border:1px solid #687263;
+  box-shadow:0 16px 45px rgba(0,0,0,.55);
+}
+.expedition-location-panel.hidden{display:none!important}
+.expedition-location-panel>button{
+  width:100%;
+  margin:6px 0;
+  min-height:48px;
+}
+
+.return-bunker-button{
+  display:none!important;
+}
+
+.sick-badge{
+  position:fixed;
+  left:50%;
+  top:calc(58px + env(safe-area-inset-top));
+  transform:translateX(-50%);
+  z-index:119;
+  padding:7px 10px;
+  background:rgba(47,74,31,.92);
+  color:#d9ffa9;
+  border:1px solid #7ba64d;
+  font-weight:900;
+}
+.sick-badge.hidden{display:none!important}
+
+.hands.expedition-hands{
+  display:block!important;
+  z-index:122!important;
+}
+
+/* hospital atmosphere */
+.expedition-ui.hospital-mode{
+  background:#111513;
+}
+
+@media(max-width:760px),(hover:none) and (pointer:coarse){
+  .expedition-ui:not(.hidden) ~ .mobile .acts #mSwing{
+    display:inline-block;
+  }
+}
