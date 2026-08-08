@@ -12,10 +12,15 @@ let publicLobbyPlayer={x:750,y:500};
 let publicLobbyRunning=false;
 let publicLobbyLastSend=0;
 
-const show=id=>["home","publicLobby","lobby","game"].forEach(x=>{
-  const el=$(x);
-  if(el)el.classList.toggle("active",x===id);
-});
+const show=id=>{
+  ["home","publicLobby","lobby","game"].forEach(x=>{
+    const el=$(x);
+    if(el)el.classList.toggle("active",x===id);
+  });
+  document.body.classList.toggle("home-scroll",id==="home");
+  document.body.style.overflowY=id==="home"?"auto":"hidden";
+  document.body.style.touchAction=id==="home"?"pan-y":"manipulation";
+};
 
 function toast(t){
   $("toast").textContent=t;
@@ -23,6 +28,7 @@ function toast(t){
   setTimeout(()=>$("toast").classList.remove("show"),1800);
 }
 
+document.body.classList.add("home-scroll");
 $("nick").value=localStorage.getItem("afterglow-nickname")||"";
 
 document.querySelectorAll("#colorPicker [data-color]").forEach(button=>{
@@ -110,32 +116,28 @@ function joinPublicLobby(lobbyId){
 
 ioClient.on("public-lobby-list",renderPublicLobbyList);
 
-$("new").onclick=()=>{
+function renderPartyList(parties){
+  const host=$("partyList");
+  if(!host)return;
+  host.innerHTML="";
+  if(!parties.length){host.innerHTML='<div class="party-card">현재 공개 파티가 없습니다.</div>';return;}
+  parties.forEach(p=>{
+    const row=document.createElement("div");row.className="party-card";
+    const info=document.createElement("div");info.innerHTML=`<b>${p.name}</b><br><small>${p.playerCount}/${p.maxPlayers}</small>`;
+    const btn=document.createElement("button");btn.textContent="Join";
+    btn.onclick=()=>ioClient.emit("join-room",{nickname:$("nick").value.trim(),code:p.code,color:selectedColor,sessionId,publicLobbyId:currentPublicLobby},joined);
+    row.append(info,btn);host.appendChild(row);
+  });
+}
+
+$("createPartyButton").onclick=()=>{$("joinPartyPanel").classList.add("hidden");$("createPartyPanel").classList.remove("hidden");};
+$("joinPartyButton").onclick=()=>{$("createPartyPanel").classList.add("hidden");$("joinPartyPanel").classList.remove("hidden");ioClient.emit("get-public-party-list",currentPublicLobby,r=>{if(r?.ok)renderPartyList(r.parties||[])});};
+$("createPartyClose").onclick=()=>$("createPartyPanel").classList.add("hidden");
+$("joinPartyClose").onclick=()=>$("joinPartyPanel").classList.add("hidden");
+$("partyCreateConfirm").onclick=()=>{
   if(!ensureProfile())return;
-  $("dlg").showModal();
-};
-
-$("form").onsubmit=e=>{
-  e.preventDefault();
-
-  ioClient.emit("create-room",{
-    nickname:$("nick").value.trim(),
-    roomName:$("title").value,
-    maxPlayers:$("max").value,
-    color:selectedColor,
-    sessionId
-  },joined);
-};
-
-$("join").onclick=()=>{
-  if(!ensureProfile())return;
-
-  ioClient.emit("join-room",{
-    nickname:$("nick").value.trim(),
-    code:$("code").value.toUpperCase(),
-    color:selectedColor,
-    sessionId
-  },joined);
+  const title=$("partyTitle").value.trim();if(!title)return toast("파티 이름을 입력하세요.");
+  ioClient.emit("create-room",{nickname:$("nick").value.trim(),roomName:title,maxPlayers:$("partyMax").value,private:$("partyPrivate").checked,color:selectedColor,sessionId,publicLobbyId:currentPublicLobby},r=>{if(!r?.ok)return toast(r?.message||"파티 생성 실패");$("createPartyPanel").classList.add("hidden");joined(r);});
 };
 
 function joined(r){
@@ -420,7 +422,7 @@ ioClient.on("public-lobby-message",renderPublicLobbyChat);
 $("publicChatButton").onclick=()=>{
   $("publicChatPanel").classList.remove("hidden");
   document.body.classList.add("chat-open");
-  resetJoystick();
+  if(matchMedia("(orientation: portrait)").matches)resetJoystick();
   setTimeout(()=>$("publicChatInput").focus(),70);
 };
 
@@ -1640,7 +1642,7 @@ $("messageButton").onclick=()=>{
     r.messages.forEach(renderChatMessage);
     $("messagePanel").classList.remove("hidden");
     document.body.classList.add("chat-open");
-    resetJoystick();
+    if(matchMedia("(orientation: portrait)").matches)resetJoystick();
     scrollChatBottom();
     setTimeout(()=>$("messageInput").focus(),80);
   });
@@ -2383,3 +2385,5 @@ if(mine){
 }
 updateStatusUI();$("timer").textContent="60";renderSlots();running=true;last=performance.now();requestAnimationFrame(loop)});
 ioClient.on("player-moved",d=>{if(players[d.id])Object.assign(players[d.id],d)});ioClient.on("item-taken",d=>{let i=items.find(x=>x.id===d.itemId);if(i)i.taken=true;if(d.playerId===myId){me.hands=d.hands;renderSlots()}});ioClient.on("items-deposited",d=>{if(d.playerId===myId){me.hands=d.hands;me.stored=d.stored;renderSlots()}});
+
+$("globalFullscreen").onclick=async()=>{try{if(!document.fullscreenElement){await document.documentElement.requestFullscreen?.();if(screen.orientation?.lock){try{await screen.orientation.lock("landscape")}catch{}}}else{await document.exitFullscreen?.();}}catch{toast("전체화면을 사용할 수 없습니다.");}};
