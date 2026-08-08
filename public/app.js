@@ -276,6 +276,14 @@ let expeditionNear=null;
 let expeditionLastSend=0;
 let expeditionFacing={x:1,y:0};
 let expeditionSwingUntil=0;
+let expeditionLocation="grocery";
+let expeditionReturnPoint={x:250,y:850};
+let expeditionReturnNear=false;
+let expeditionHandLimit=4;
+let playerSick=false;
+let hospitalAbomination=null;
+let hospitalGlass=[];
+let hospitalTripwires=[];
 let equippedWeapon=null;
 let swingUntil=0;
 let dayStartedAt=Date.now();
@@ -770,7 +778,35 @@ function draw(){
   $("floor").textContent=`${floor}층 · ${cur.n}`;
 }
 
-function renderSlots(){let a=[...document.querySelectorAll(".slot")];if(!a.length){$("slots").innerHTML='<div class="slot">✋</div>'.repeat(4);a=[...document.querySelectorAll(".slot")]}a.forEach(x=>{x.textContent="✋";x.style.background="#f0e4c9"});let k=0;(me.hands||[]).forEach(t=>{let n=defs[t].slots;for(let i=0;i<n&&k<4;i++,k++){a[k].textContent=i? "▪":ICON[t];a[k].style.background="#edf4c7"}});$("stored").textContent=me.stored?.length?`보관함: ${me.stored.map(t=>ICON[t]).join(" ")}`:"보관함 비어 있음"}
+function renderSlots(){
+  const limit=expeditionRunning ? expeditionHandLimit : 4;
+  const slotsHost=$("slots");
+
+  slotsHost.innerHTML='<div class="slot">✋</div>'.repeat(limit);
+  const a=[...slotsHost.querySelectorAll(".slot")];
+
+  let k=0;
+  (me.hands||[]).forEach(t=>{
+    const n=defs[t]?.slots||1;
+    for(let i=0;i<n&&k<limit;i++,k++){
+      a[k].textContent=i?"▪":ICON[t];
+      a[k].style.background="#edf4c7";
+    }
+  });
+
+  const title=document.querySelector(".hands > div");
+  if(title){
+    title.textContent=expeditionRunning
+      ? `탐사 손 ${limit}칸${limit===8?" · 🎒 Backpack":""}`
+      : "손 4칸";
+  }
+
+  $("stored").textContent=expeditionRunning
+    ? `${k}/${limit}칸 사용`
+    : (me.stored?.length
+      ? `보관함: ${me.stored.map(t=>ICON[t]).join(" ")}`
+      : "보관함 비어 있음");
+}
 function findNear(){
   near=null;
   let d=999;
@@ -978,6 +1014,7 @@ function updateStatusUI(){
   else if(thirst<30)condition="목마름";
   else if(fatigue>75)condition="극심한 피로";
   else if(sanityStat<40)condition="환각 위험";
+  else if(playerSick)condition="Sickness";
 
   $("conditionValue").textContent=condition;
 
@@ -1688,12 +1725,17 @@ function consumeBunker(type){
       hunger=r.stats.hunger??hunger;
       thirst=r.stats.thirst??thirst;
       hygiene=r.stats.hygiene??hygiene;
+      if(typeof r.stats.sick==="boolean")playerSick=r.stats.sick;
     }
 
     if(type==="water")toast("물을 마셨습니다. 갈증 +70");
     else if(type==="beans")toast("통조림을 먹었습니다. 허기 +50");
     else if(type==="medkit")toast("메디킷을 사용했습니다. HP 완전 회복");
-    else if(type==="soap")toast("비누를 사용했습니다. 깨끗함 100%");
+    else if(type==="soap"){
+      playerSick=false;
+      $("sickBadge")?.classList.add("hidden");
+      toast("샤워 완료 · 깨끗함 100% · Sickness 치료");
+    }
 
     updateStatusUI();
   });
@@ -2122,7 +2164,13 @@ function updateMobileActionVisibility(scene){
   if(!pick||!store||!stairBtn)return;
   if(hands)hands.style.display=scene==="bunker"?"none":"block";
   if(scene==="bunker"){
-    pick.style.display="none"; store.style.display="none"; stairBtn.style.display="none"; if(swing)swing.style.display="none";
+    pick.style.display="none";
+    store.style.display="none";
+    stairBtn.style.display="none";
+    if(swing){
+      swing.style.display=equippedWeapon?"inline-block":"none";
+      swing.textContent="공격";
+    }
   }else if(scene==="expedition"){
     pick.style.display="inline-block"; pick.textContent="줍기"; store.style.display="none"; stairBtn.style.display="none"; if(swing)swing.style.display=equippedWeapon?"inline-block":"none";
   }else{
@@ -2296,6 +2344,33 @@ ioClient.on("bunker-player-left",data=>{
 
 
 
+
+function updateMouseWeaponFacing(clientX,clientY){
+  const vw=visualViewport?.width||innerWidth;
+  const vh=visualViewport?.height||innerHeight;
+  const dx=clientX-vw/2;
+  const dy=clientY-vh/2;
+  const len=Math.hypot(dx,dy);
+
+  if(len<8)return;
+
+  const facing={x:dx/len,y:dy/len};
+
+  if(bunkerRunning){
+    bunkerFacing=facing;
+  }
+  if(expeditionRunning){
+    expeditionFacing=facing;
+  }
+}
+
+addEventListener("pointermove",e=>{
+  if(e.pointerType==="touch")return;
+  if(bunkerRunning||expeditionRunning){
+    updateMouseWeaponFacing(e.clientX,e.clientY);
+  }
+});
+
 // =========================================================
 // v10 식료품점 탐사
 // =========================================================
@@ -2330,6 +2405,38 @@ const EX_SOLIDS=[
   {x:880,y:670,w:150,h:70}
 ];
 
+
+const HOSPITAL_SOLIDS=[
+  {x:0,y:0,w:1200,h:30},
+  {x:0,y:930,w:1200,h:30},
+  {x:0,y:0,w:30,h:960},
+  {x:1170,y:0,w:30,h:960},
+
+  // reception
+  {x:145,y:110,w:330,h:70},
+
+  // ward walls and rooms
+  {x:250,y:240,w:25,h:500},
+  {x:485,y:180,w:25,h:300},
+  {x:485,y:570,w:25,h:260},
+  {x:720,y:180,w:25,h:260},
+  {x:720,y:535,w:25,h:295},
+  {x:955,y:210,w:25,h:530},
+
+  // stretchers / cabinets
+  {x:310,y:280,w:115,h:45},
+  {x:310,y:565,w:115,h:45},
+  {x:545,y:235,w:115,h:45},
+  {x:545,y:665,w:115,h:45},
+  {x:785,y:290,w:110,h:45},
+  {x:785,y:660,w:110,h:45}
+];
+
+function currentExpeditionSolids(){
+  return expeditionLocation==="hospital"
+    ? HOSPITAL_SOLIDS
+    : EX_SOLIDS;
+}
 function resizeExpeditionCanvas(){
   const d=devicePixelRatio||1;
   const vw=visualViewport?.width||innerWidth;
@@ -2343,7 +2450,7 @@ function resizeExpeditionCanvas(){
 }
 
 function exBlocked(x,y){
-  return EX_SOLIDS.some(r=>
+  return currentExpeditionSolids().some(r=>
     x+EX_P>r.x &&
     x<r.x+r.w &&
     y+EX_P>r.y &&
@@ -2353,6 +2460,20 @@ function exBlocked(x,y){
 
 function exFindNear(){
   expeditionNear=null;
+  expeditionReturnNear=false;
+
+  const returnDistance=Math.hypot(
+    expeditionPlayer.x+15-expeditionReturnPoint.x,
+    expeditionPlayer.y+15-expeditionReturnPoint.y
+  );
+
+  if(returnDistance<85){
+    expeditionReturnNear=true;
+    $("expeditionPrompt").classList.remove("hidden");
+    $("expeditionPrompt").textContent="E · 벙커로 돌아가기";
+    return;
+  }
+
   let best=999;
 
   expeditionItems.forEach(item=>{
@@ -2376,7 +2497,6 @@ function exFindNear(){
       `E · ${ICON[expeditionNear.type]} ${ITEM_NAME[expeditionNear.type]} 줍기 (${defs[expeditionNear.type]?.slots||1}칸)`;
   }
 }
-
 function drawExpedition(){
   if(!expeditionRunning)return;
 
@@ -2387,31 +2507,118 @@ function drawExpedition(){
 
   exctx.clearRect(0,0,vw,vh);
 
-  // 바닥
-  exctx.fillStyle="#aca58d";
-  exctx.fillRect(0,0,vw,vh);
+  // 장소별 바닥/구조
+  if(expeditionLocation==="hospital"){
+    exctx.fillStyle="#646a67";
+    exctx.fillRect(0,0,vw,vh);
 
-  // 체크무늬 타일
-  const tile=48;
-  for(let y=Math.floor(camY/tile)*tile;y<camY+vh+tile;y+=tile){
-    for(let x=Math.floor(camX/tile)*tile;x<camX+vw+tile;x+=tile){
-      exctx.fillStyle=
-        ((Math.floor(x/tile)+Math.floor(y/tile))%2===0)
-        ? "#bbb49c"
-        : "#a9a28c";
-      exctx.fillRect(x-camX,y-camY,tile,tile);
+    // 낡은 병원 타일
+    const tile=44;
+    for(let y=Math.floor(camY/tile)*tile;y<camY+vh+tile;y+=tile){
+      for(let x=Math.floor(camX/tile)*tile;x<camX+vw+tile;x+=tile){
+        exctx.fillStyle=
+          ((Math.floor(x/tile)+Math.floor(y/tile))%2===0)
+          ? "#858b87"
+          : "#737975";
+        exctx.fillRect(x-camX,y-camY,tile,tile);
+      }
     }
+
+    currentExpeditionSolids().forEach((r,i)=>{
+      exctx.fillStyle=i<4?"#343a37":"#5b625f";
+      exctx.fillRect(r.x-camX,r.y-camY,r.w,r.h);
+      exctx.strokeStyle="#202421";
+      exctx.lineWidth=3;
+      exctx.strokeRect(r.x-camX,r.y-camY,r.w,r.h);
+    });
+
+    // 깨진 유리
+    hospitalGlass.forEach(g=>{
+      const sx=g.x-camX,sy=g.y-camY;
+      exctx.strokeStyle="rgba(195,225,230,.8)";
+      exctx.lineWidth=2;
+      for(let i=0;i<8;i++){
+        const a=i*Math.PI/4;
+        exctx.beginPath();
+        exctx.moveTo(sx,sy);
+        exctx.lineTo(
+          sx+Math.cos(a)*(12+(i%3)*5),
+          sy+Math.sin(a)*(12+(i%3)*5)
+        );
+        exctx.stroke();
+      }
+    });
+
+    // 트립와이어
+    hospitalTripwires.forEach(w=>{
+      exctx.strokeStyle="rgba(185,44,39,.85)";
+      exctx.lineWidth=2;
+      exctx.beginPath();
+      exctx.moveTo(w.x1-camX,w.y1-camY);
+      exctx.lineTo(w.x2-camX,w.y2-camY);
+      exctx.stroke();
+    });
+
+    // Hospital Abomination - HP바 없음, 처치 불가
+    if(hospitalAbomination){
+      const sx=hospitalAbomination.x-camX;
+      const sy=hospitalAbomination.y-camY;
+
+      exctx.fillStyle="#292e2b";
+      exctx.beginPath();
+      exctx.ellipse(sx+18,sy+20,18,28,0,0,Math.PI*2);
+      exctx.fill();
+
+      exctx.fillStyle="#4f5b50";
+      exctx.fillRect(sx+7,sy+35,22,38);
+
+      exctx.strokeStyle="#1c211e";
+      exctx.lineWidth=7;
+      exctx.beginPath();
+      exctx.moveTo(sx+8,sy+44);
+      exctx.lineTo(sx-8,sy+65);
+      exctx.moveTo(sx+28,sy+44);
+      exctx.lineTo(sx+43,sy+67);
+      exctx.stroke();
+
+      // 눈은 가려져 있음
+      exctx.strokeStyle="#7c7267";
+      exctx.lineWidth=5;
+      exctx.beginPath();
+      exctx.moveTo(sx+8,sy+18);
+      exctx.lineTo(sx+29,sy+18);
+      exctx.stroke();
+
+      if(hospitalAbomination.alerted){
+        exctx.fillStyle="#ff8b70";
+        exctx.font="bold 11px sans-serif";
+        exctx.fillText("HEARD YOU",sx-7,sy-10);
+      }
+    }
+  }else{
+    // 식료품점
+    exctx.fillStyle="#aca58d";
+    exctx.fillRect(0,0,vw,vh);
+
+    const tile=48;
+    for(let y=Math.floor(camY/tile)*tile;y<camY+vh+tile;y+=tile){
+      for(let x=Math.floor(camX/tile)*tile;x<camX+vw+tile;x+=tile){
+        exctx.fillStyle=
+          ((Math.floor(x/tile)+Math.floor(y/tile))%2===0)
+          ? "#bbb49c"
+          : "#a9a28c";
+        exctx.fillRect(x-camX,y-camY,tile,tile);
+      }
+    }
+
+    EX_SOLIDS.forEach((r,i)=>{
+      exctx.fillStyle=i<4?"#49443a":"#75654d";
+      exctx.fillRect(r.x-camX,r.y-camY,r.w,r.h);
+      exctx.strokeStyle="#211e19";
+      exctx.lineWidth=3;
+      exctx.strokeRect(r.x-camX,r.y-camY,r.w,r.h);
+    });
   }
-
-  // 벽/선반
-  EX_SOLIDS.forEach((r,i)=>{
-    exctx.fillStyle=i<4?"#49443a":"#75654d";
-    exctx.fillRect(r.x-camX,r.y-camY,r.w,r.h);
-
-    exctx.strokeStyle="#211e19";
-    exctx.lineWidth=3;
-    exctx.strokeRect(r.x-camX,r.y-camY,r.w,r.h);
-  });
 
   // 아이템
   expeditionItems.forEach(item=>{
@@ -2475,7 +2682,7 @@ function drawExpedition(){
 
   $("mutantWarning").classList.toggle(
     "hidden",
-    nearestMutantDistance>260
+    expeditionLocation==="hospital" || nearestMutantDistance>260
   );
 
   // 내 캐릭터 중앙
@@ -2604,6 +2811,22 @@ function drawExpedition(){
     }
   }
 
+  // 탐사 시작/귀환 지점
+  {
+    const rx=expeditionReturnPoint.x-camX;
+    const ry=expeditionReturnPoint.y-camY;
+
+    exctx.strokeStyle="rgba(210,235,185,.9)";
+    exctx.lineWidth=3;
+    exctx.setLineDash([8,6]);
+    exctx.strokeRect(rx-35,ry-35,70,70);
+    exctx.setLineDash([]);
+
+    exctx.fillStyle="rgba(218,240,198,.85)";
+    exctx.font="bold 11px sans-serif";
+    exctx.fillText("BUNKER EXIT",rx-36,ry-43);
+  }
+
   // 원형 시야: 원 밖은 완전 검정
   const radius=Math.min(vw,vh)*0.34;
   exctx.save();
@@ -2654,8 +2877,9 @@ function expeditionLoop(){
     expeditionFacing.y=dy/len;
   }
 
-  const nx=expeditionPlayer.x+dx*3.2;
-  const ny=expeditionPlayer.y+dy*3.2;
+  const moveSpeed=playerSick?2.5:3.2;
+  const nx=expeditionPlayer.x+dx*moveSpeed;
+  const ny=expeditionPlayer.y+dy*moveSpeed;
 
   if(!exBlocked(nx,expeditionPlayer.y))expeditionPlayer.x=nx;
   if(!exBlocked(expeditionPlayer.x,ny))expeditionPlayer.y=ny;
@@ -2666,7 +2890,9 @@ function expeditionLoop(){
   if(now-expeditionLastSend>70){
     ioClient.emit("expedition-move",{
       x:expeditionPlayer.x,
-      y:expeditionPlayer.y
+      y:expeditionPlayer.y,
+      facingX:expeditionFacing.x,
+      facingY:expeditionFacing.y
     });
     expeditionLastSend=now;
   }
@@ -2675,6 +2901,11 @@ function expeditionLoop(){
 }
 
 function takeExpeditionItem(){
+  if(expeditionReturnNear){
+    returnToBunker();
+    return;
+  }
+
   if(!expeditionNear){
     toast("가까운 아이템이 없습니다.");
     return;
@@ -2691,14 +2922,40 @@ function takeExpeditionItem(){
   });
 }
 
-function requestExpedition(){
-  ioClient.emit("request-expedition",r=>{
+function requestExpedition(location=null){
+  if((bunkerStock.map||0)>0 && !location){
+    $("expeditionLocationPanel").classList.remove("hidden");
+    return;
+  }
+
+  ioClient.emit("request-expedition",{location},r=>{
     if(!r?.ok){
       toast(r?.message||"탐사 모집 실패");
+      return;
+    }
+
+    if(r.random){
+      toast(
+        r.location==="hospital"
+          ? "지도가 없어 무작위로 병원 탐사가 선택되었습니다."
+          : "지도가 없어 무작위로 식료품점 탐사가 선택되었습니다."
+      );
     }
   });
 }
 
+$("expeditionLocationClose").onclick=()=>
+  $("expeditionLocationPanel").classList.add("hidden");
+
+$("chooseGrocery").onclick=()=>{
+  $("expeditionLocationPanel").classList.add("hidden");
+  requestExpedition("grocery");
+};
+
+$("chooseHospital").onclick=()=>{
+  $("expeditionLocationPanel").classList.add("hidden");
+  requestExpedition("hospital");
+};
 function beginExpeditionFromServer(data){
   const participants=data.participantIds||[];
 
@@ -2714,17 +2971,47 @@ function beginExpeditionFromServer(data){
   $("statusPanel").classList.add("hidden");
   $("expeditionInvitePanel").classList.add("hidden");
 
+  expeditionLocation=data.location||"grocery";
   expeditionItems=data.items||[];
+  expeditionReturnPoint=data.returnPoint||(
+    expeditionLocation==="hospital"
+      ? {x:115,y:835}
+      : {x:250,y:850}
+  );
+  expeditionHandLimit=data.handLimit||4;
+  playerSick=!data.hasGasMask;
+
   expeditionMutants={};
   (data.mutants||[]).forEach(m=>expeditionMutants[m.id]={...m});
 
-  expeditionPlayer={x:250,y:850};
+  hospitalAbomination=data.hospitalAbomination
+    ? {...data.hospitalAbomination}
+    : null;
+  hospitalGlass=data.hospitalGlass||[];
+  hospitalTripwires=data.hospitalTripwires||[];
+
+  expeditionPlayer={
+    x:expeditionReturnPoint.x,
+    y:expeditionReturnPoint.y
+  };
   expeditionFacing={x:1,y:0};
   expeditionOthers={};
   expeditionRunning=true;
   me.hands=[];
-  updateMobileActionVisibility("expedition");
 
+  $("expeditionUI").classList.toggle(
+    "hospital-mode",
+    expeditionLocation==="hospital"
+  );
+
+  $("expeditionTitle").textContent=
+    expeditionLocation==="hospital"
+      ? "🏥 병원 탐사"
+      : "🛒 식료품점 탐사";
+
+  $("sickBadge").classList.toggle("hidden",!playerSick);
+
+  updateMobileActionVisibility("expedition");
   $("expeditionUI").classList.remove("hidden");
   $("expeditionDay").textContent=`DAY ${day}`;
 
@@ -2738,7 +3025,6 @@ function beginExpeditionFromServer(data){
   drawExpedition();
   expeditionLoop();
 }
-
 function returnToBunker(){
   ioClient.emit("return-from-expedition",{
     roomCode:room?.code,
@@ -2752,6 +3038,10 @@ function returnToBunker(){
 
     expeditionRunning=false;
     $("mutantWarning").classList.add("hidden");
+    $("sickBadge").classList.add("hidden");
+    hospitalAbomination=null;
+    hospitalGlass=[];
+    hospitalTripwires=[];
     expeditionMutants={};
     $("expeditionUI").classList.add("hidden");
 
@@ -2822,13 +3112,13 @@ function swingWeapon(){
     const dy=(mutantNear.y+18)-(expeditionPlayer.y+15);
     const dist=Math.hypot(dx,dy);
 
-    if(dist>95)return;
+    if(dist>125)return;
 
     const dot=
       (dx/(dist||1))*expeditionFacing.x+
       (dy/(dist||1))*expeditionFacing.y;
 
-    if(dot<0.05)return;
+    if(dot<-0.18)return;
 
     ioClient.emit("attack-mutant",{
       mutantId:mutantNear.id,
@@ -2851,7 +3141,7 @@ function swingWeapon(){
   }
 }
 
-$("returnBunkerButton").onclick=returnToBunker;
+
 $("expeditionPrompt").onclick=takeExpeditionItem;
 $("swingButton").onclick=swingWeapon;
 if($("mSwing"))$("mSwing").onclick=swingWeapon;
@@ -2892,7 +3182,7 @@ ioClient.on("expedition-invite",d=>{
   $("expeditionInviteText").textContent=
     d.leaderId===myId
       ? "팀원의 참여를 기다리는 중..."
-      : `${d.leaderName}님이 식료품점 탐사를 준비합니다.`;
+      : `${d.leaderName}님이 ${d.location==="hospital"?"병원":"식료품점"} 탐사를 준비합니다.`;
 
   $("expeditionInvitePanel").classList.remove("hidden");
   updateExpeditionInviteCountdown();
@@ -2953,6 +3243,17 @@ ioClient.on("weapon-swung",d=>{
 });
 
 
+
+ioClient.on("hospital-abomination-moved",d=>{
+  if(!hospitalAbomination)return;
+  hospitalAbomination={
+    ...hospitalAbomination,
+    x:d.x,
+    y:d.y,
+    alerted:d.alerted
+  };
+});
+
 ioClient.on("mutant-moved",m=>{
   expeditionMutants[m.id]={
     ...(expeditionMutants[m.id]||{}),
@@ -2982,7 +3283,15 @@ ioClient.on("explorer-damaged",d=>{
   hp=d.hp;
   updateStatusUI();
 
-  toast(`돌연변이 공격 -${d.damage} HP`);
+  if(d.reason==="sickness"){
+    playerSick=true;
+    $("sickBadge").classList.remove("hidden");
+    toast(`방사능 sickness -${d.damage} HP`);
+  }else if(d.reason==="hospitalAbomination"){
+    toast(`Hospital Abomination 공격 -${d.damage} HP`);
+  }else{
+    toast(`돌연변이 공격 -${d.damage} HP`);
+  }
 
   if(hp<=0){
     expeditionRunning=false;
