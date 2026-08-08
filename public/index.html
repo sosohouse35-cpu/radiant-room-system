@@ -208,16 +208,33 @@
     <div id="computerContent" class="computer-content"></div>
   </div>
 
-  <div id="ventPanel" class="vent-panel hidden">
-    <div class="message-head">
-      <strong id="ventPanelTitle">VENT</strong>
-      <button id="ventPanelClose" type="button">×</button>
+  <div id="ventPanel" class="vent-inspection hidden">
+    <canvas id="ventCanvas"></canvas>
+
+    <div class="vent-inspection-title">
+      <strong id="ventPanelTitle">환풍구</strong>
+      <span id="ventDistanceLabel">이상 없음</span>
     </div>
-    <div id="ventThreatText">위협 없음</div>
-    <div class="vent-actions">
-      <button id="ventToggle" type="button">벤트 닫기</button>
-      <button id="ventSpray" type="button">🧴 스프레이</button>
-      <button id="ventTrap" type="button">🪤 쥐덫</button>
+
+    <div class="vent-side-actions">
+      <button id="ventToggle" type="button">
+        <span>벤트 닫기</span>
+        <small>도구 필요 없음</small>
+      </button>
+
+      <button id="ventSpray" type="button">
+        <span>스프레이 뿌리기</span>
+        <small id="ventSprayCount">스프레이 ×0</small>
+      </button>
+
+      <button id="ventTrap" type="button">
+        <span>덫 설치하기</span>
+        <small id="ventTrapCount">덫 ×0</small>
+      </button>
+
+      <button id="ventPanelClose" class="vent-exit" type="button">
+        <span>벤트 화면 나가기</span>
+      </button>
     </div>
   </div>
 
