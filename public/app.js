@@ -284,6 +284,11 @@ let playerSick=false;
 let hospitalAbomination=null;
 let hospitalGlass=[];
 let hospitalTripwires=[];
+    expeditionFlashlight=false;
+    expeditionJumping=false;
+let expeditionJumping=false;
+let expeditionJumpUntil=0;
+let expeditionFlashlight=false;
 let equippedWeapon=null;
 let swingUntil=0;
 let dayStartedAt=Date.now();
@@ -2407,29 +2412,28 @@ const EX_SOLIDS=[
 
 
 const HOSPITAL_SOLIDS=[
-  {x:0,y:0,w:1200,h:30},
-  {x:0,y:930,w:1200,h:30},
-  {x:0,y:0,w:30,h:960},
-  {x:1170,y:0,w:30,h:960},
+  {x:0,y:0,w:1200,h:30},{x:0,y:930,w:1200,h:30},
+  {x:0,y:0,w:30,h:960},{x:1170,y:0,w:30,h:960},
 
-  // reception
-  {x:145,y:110,w:330,h:70},
+  {x:500,y:110,w:30,h:620},
 
-  // ward walls and rooms
-  {x:250,y:240,w:25,h:500},
-  {x:485,y:180,w:25,h:300},
-  {x:485,y:570,w:25,h:260},
-  {x:720,y:180,w:25,h:260},
-  {x:720,y:535,w:25,h:295},
-  {x:955,y:210,w:25,h:530},
+  {x:300,y:70,w:430,h:25},{x:300,y:70,w:25,h:120},{x:705,y:70,w:25,h:120},
 
-  // stretchers / cabinets
-  {x:310,y:280,w:115,h:45},
-  {x:310,y:565,w:115,h:45},
-  {x:545,y:235,w:115,h:45},
-  {x:545,y:665,w:115,h:45},
-  {x:785,y:290,w:110,h:45},
-  {x:785,y:660,w:110,h:45}
+  {x:90,y:190,w:25,h:430},{x:90,y:190,w:110,h:25},{x:90,y:595,w:110,h:25},
+
+  {x:115,y:300,w:250,h:25},{x:115,y:365,w:250,h:25},
+  {x:365,y:300,w:25,h:20},{x:365,y:370,w:25,h:20},
+
+  {x:530,y:300,w:300,h:25},{x:530,y:365,w:300,h:25},
+
+  {x:830,y:205,w:25,h:430},{x:830,y:205,w:115,h:25},{x:920,y:205,w:25,h:430},
+
+  {x:855,y:565,w:105,h:25},{x:935,y:565,w:25,h:125},
+
+  {x:500,y:665,w:250,h:25},{x:500,y:730,w:250,h:25},
+  {x:750,y:665,w:25,h:65},
+
+  {x:750,y:730,w:25,h:180},{x:820,y:730,w:25,h:180}
 ];
 
 function currentExpeditionSolids(){
@@ -2685,12 +2689,47 @@ function drawExpedition(){
     expeditionLocation==="hospital" || nearestMutantDistance>260
   );
 
+  // 다른 플레이어의 손전등
+  Object.values(expeditionOthers).forEach(p=>{
+    if(!p.flashlightEquipped)return;
+
+    const sx=p.x-camX+15;
+    const sy=p.y-camY+15;
+    const angle=Math.atan2(p.facingY||0,p.facingX||1);
+
+    exctx.save();
+    exctx.translate(sx,sy);
+    exctx.rotate(angle);
+
+    const beam=exctx.createLinearGradient(0,0,230,0);
+    beam.addColorStop(0,"rgba(255,248,194,.20)");
+    beam.addColorStop(1,"rgba(255,248,194,0)");
+    exctx.fillStyle=beam;
+
+    exctx.beginPath();
+    exctx.moveTo(5,-12);
+    exctx.lineTo(240,-70);
+    exctx.lineTo(240,70);
+    exctx.lineTo(5,12);
+    exctx.closePath();
+    exctx.fill();
+
+    exctx.restore();
+  });
+
   // 내 캐릭터 중앙
+  const jumpProgress=expeditionJumping
+    ? Math.max(0,Math.min(1,(expeditionJumpUntil-performance.now())/520))
+    : 0;
+  const jumpHeight=expeditionJumping
+    ? Math.sin((1-jumpProgress)*Math.PI)*22
+    : 0;
+
   exctx.fillStyle=me.color||"#fff";
-  exctx.fillRect(vw/2-15,vh/2-15,30,30);
+  exctx.fillRect(vw/2-15,vh/2-15-jumpHeight,30,30);
   exctx.strokeStyle="#fff";
   exctx.lineWidth=2;
-  exctx.strokeRect(vw/2-15,vh/2-15,30,30);
+  exctx.strokeRect(vw/2-15,vh/2-15-jumpHeight,30,30);
 
   // 탐사 무기: 벙커와 동일한 방향/쿨타임/베기 시스템
   if(equippedWeapon){
@@ -2827,31 +2866,107 @@ function drawExpedition(){
     exctx.fillText("BUNKER EXIT",rx-36,ry-43);
   }
 
-  // 원형 시야: 원 밖은 완전 검정
-  const radius=Math.min(vw,vh)*0.34;
-  exctx.save();
+  // 손전등 빛: 탐사 참가자 전원이 자동 착용.
+  if(expeditionFlashlight){
+    const fx=expeditionFacing.x||1;
+    const fy=expeditionFacing.y||0;
+    const angle=Math.atan2(fy,fx);
+    const cx=vw/2;
+    const cy=vh/2;
 
-  exctx.fillStyle="rgba(0,0,0,.96)";
-  exctx.beginPath();
-  exctx.rect(0,0,vw,vh);
-  exctx.arc(vw/2,vh/2,radius,0,Math.PI*2,true);
-  exctx.fill("evenodd");
+    exctx.save();
+    exctx.translate(cx,cy);
+    exctx.rotate(angle);
 
-  // 시야 가장자리 부드럽게
-  const grad=exctx.createRadialGradient(
-    vw/2,vh/2,radius*.72,
-    vw/2,vh/2,radius
-  );
-  grad.addColorStop(0,"rgba(0,0,0,0)");
-  grad.addColorStop(1,"rgba(0,0,0,.55)");
-  exctx.fillStyle=grad;
-  exctx.beginPath();
-  exctx.arc(vw/2,vh/2,radius,0,Math.PI*2);
-  exctx.fill();
+    const beam=exctx.createLinearGradient(15,0,330,0);
+    beam.addColorStop(0,"rgba(255,248,194,.30)");
+    beam.addColorStop(.5,"rgba(255,248,194,.18)");
+    beam.addColorStop(1,"rgba(255,248,194,0)");
 
-  exctx.restore();
+    exctx.fillStyle=beam;
+    exctx.beginPath();
+    exctx.moveTo(10,-18);
+    exctx.lineTo(350,-110);
+    exctx.lineTo(350,110);
+    exctx.lineTo(10,18);
+    exctx.closePath();
+    exctx.fill();
+
+    exctx.restore();
+  }
+
+  // 기본 원형 시야 + 마지막 이동 방향의 손전등 원뿔 시야
+  {
+    const radius=Math.min(vw,vh)*.25;
+    const cx=vw/2,cy=vh/2;
+
+    exctx.save();
+    exctx.fillStyle="rgba(0,0,0,.965)";
+    exctx.fillRect(0,0,vw,vh);
+    exctx.globalCompositeOperation="destination-out";
+
+    const circle=exctx.createRadialGradient(cx,cy,10,cx,cy,radius);
+    circle.addColorStop(0,"rgba(0,0,0,1)");
+    circle.addColorStop(.78,"rgba(0,0,0,.96)");
+    circle.addColorStop(1,"rgba(0,0,0,0)");
+    exctx.fillStyle=circle;
+    exctx.beginPath();
+    exctx.arc(cx,cy,radius,0,Math.PI*2);
+    exctx.fill();
+
+    if(expeditionFlashlight){
+      const angle=Math.atan2(expeditionFacing.y||0,expeditionFacing.x||1);
+      exctx.translate(cx,cy);
+      exctx.rotate(angle);
+
+      const beam=exctx.createLinearGradient(0,0,380,0);
+      beam.addColorStop(0,"rgba(0,0,0,1)");
+      beam.addColorStop(.72,"rgba(0,0,0,.86)");
+      beam.addColorStop(1,"rgba(0,0,0,0)");
+
+      exctx.fillStyle=beam;
+      exctx.beginPath();
+      exctx.moveTo(0,-28);
+      exctx.lineTo(385,-128);
+      exctx.lineTo(385,128);
+      exctx.lineTo(0,28);
+      exctx.closePath();
+      exctx.fill();
+    }
+
+    exctx.restore();
+  }
 
   requestAnimationFrame(drawExpedition);
+}
+
+
+function startExpeditionJump(){
+  if(!expeditionRunning || expeditionJumping)return;
+
+  ioClient.emit("expedition-jump",{
+    roomCode:room?.code,
+    sessionId,
+    nickname:$("nick").value.trim()
+  },r=>{
+    if(!r?.ok)return;
+
+    expeditionJumping=true;
+    expeditionJumpUntil=performance.now()+520;
+    $("jumpBadge")?.classList.remove("hidden");
+
+    setTimeout(()=>{
+      expeditionJumping=false;
+      $("jumpBadge")?.classList.add("hidden");
+    },530);
+  });
+}
+
+if($("mJump")){
+  $("mJump").onclick=e=>{
+    e.stopPropagation();
+    startExpeditionJump();
+  };
 }
 
 function expeditionLoop(){
@@ -2980,6 +3095,7 @@ function beginExpeditionFromServer(data){
   );
   expeditionHandLimit=data.handLimit||4;
   playerSick=!data.hasGasMask;
+  expeditionFlashlight=!!data.hasFlashlight;
 
   expeditionMutants={};
   (data.mutants||[]).forEach(m=>expeditionMutants[m.id]={...m});
@@ -3143,8 +3259,8 @@ function swingWeapon(){
 
 
 $("expeditionPrompt").onclick=takeExpeditionItem;
-$("swingButton").onclick=swingWeapon;
-if($("mSwing"))$("mSwing").onclick=swingWeapon;
+
+
 
 addEventListener("keydown",e=>{
   if(!expeditionRunning)return;
@@ -3226,6 +3342,25 @@ ioClient.on("expedition-player-moved",p=>{
   expeditionOthers[p.id]={...(expeditionOthers[p.id]||{}),...p};
 });
 
+ioClient.on("expedition-player-jumped",d=>{
+  if(d.id===myId){
+    expeditionJumping=true;
+    expeditionJumpUntil=performance.now()+520;
+  }else if(expeditionOthers[d.id]){
+    expeditionOthers[d.id].jumping=true;
+    expeditionOthers[d.id].jumpUntil=performance.now()+520;
+  }
+});
+
+ioClient.on("expedition-player-landed",d=>{
+  if(d.id===myId){
+    expeditionJumping=false;
+  }else if(expeditionOthers[d.id]){
+    expeditionOthers[d.id].jumping=false;
+  }
+});
+
+
 ioClient.on("expedition-player-left",d=>{
   delete expeditionOthers[d.id];
 });
@@ -3288,7 +3423,7 @@ ioClient.on("explorer-damaged",d=>{
     $("sickBadge").classList.remove("hidden");
     toast(`방사능 sickness -${d.damage} HP`);
   }else if(d.reason==="hospitalAbomination"){
-    toast(`Hospital Abomination 공격 -${d.damage} HP`);
+    toast("Hospital Abomination에게 붙잡혔습니다.");
   }else{
     toast(`돌연변이 공격 -${d.damage} HP`);
   }
@@ -3605,14 +3740,49 @@ document.addEventListener("fullscreenchange",()=>{
 });
 
 
-const bunkerCombatKeyHandler=true;
+
+
+const v21KeyboardControls=true;
 addEventListener("keydown",e=>{
-  if(
-    bunkerRunning &&
-    (e.code==="Space" || e.key.toLowerCase()==="x") &&
-    !e.repeat
-  ){
+  if(e.repeat)return;
+
+  if(expeditionRunning && e.code==="Space"){
     e.preventDefault();
-    swingWeapon();
+    startExpeditionJump();
+    return;
+  }
+
+  if(expeditionRunning && e.key.toLowerCase()==="e"){
+    e.preventDefault();
+    takeExpeditionItem();
+    return;
   }
 });
+
+
+function isUiTarget(target){
+  return !!target.closest(
+    "button,input,textarea,select,.message-panel,.public-chat-panel,"+
+    ".status-panel,.weapon-panel,.vent-inspection,.lobby-popup,"+
+    ".expedition-location-panel,.expedition-invite-panel,.joystick-base,.hands"
+  );
+}
+
+function combatScreenPointer(e){
+  if(isUiTarget(e.target))return;
+  if(!(bunkerRunning||expeditionRunning))return;
+  if(!equippedWeapon)return;
+
+  const vw=visualViewport?.width||innerWidth;
+
+  if(e.pointerType==="touch"){
+    // 왼쪽은 조이스틱 이동 영역으로 확보.
+    if(e.clientX<vw*.42)return;
+  }
+
+  updateMouseWeaponFacing(e.clientX,e.clientY);
+  swingWeapon();
+}
+
+$("bunkerCanvas").addEventListener("pointerdown",combatScreenPointer);
+$("expeditionCanvas").addEventListener("pointerdown",combatScreenPointer);
