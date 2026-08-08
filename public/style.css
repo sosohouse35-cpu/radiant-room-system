@@ -836,3 +836,118 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
     grid-template-columns:1fr;
   }
 }
+
+
+/* =========================================================
+   v17 vent inspection
+========================================================= */
+.vent-inspection{
+  position:fixed;
+  inset:0;
+  z-index:210;
+  background:#070807;
+  overflow:hidden;
+}
+.vent-inspection.hidden{display:none!important}
+
+#ventCanvas{
+  position:absolute;
+  inset:0;
+  width:100vw;
+  height:100dvh;
+  display:block;
+  background:#080a09;
+}
+
+.vent-inspection-title{
+  position:absolute;
+  left:calc(16px + env(safe-area-inset-left));
+  top:calc(14px + env(safe-area-inset-top));
+  z-index:214;
+  min-width:210px;
+  padding:10px 13px;
+  background:rgba(13,16,14,.9);
+  border:1px solid #596158;
+  color:#eee;
+}
+.vent-inspection-title strong{
+  display:block;
+  color:#d6f055;
+  font-size:20px;
+}
+.vent-inspection-title span{
+  display:block;
+  margin-top:5px;
+  font-weight:800;
+}
+
+.vent-side-actions{
+  position:absolute;
+  right:calc(14px + env(safe-area-inset-right));
+  top:50%;
+  transform:translateY(-50%);
+  z-index:215;
+  width:min(230px,34vw);
+  display:grid;
+  gap:8px;
+}
+.vent-side-actions button{
+  display:grid;
+  gap:3px;
+  min-height:64px;
+  padding:10px 12px;
+  text-align:left;
+  background:rgba(22,25,22,.94);
+  color:#f2f0e8;
+  border:1px solid #626b60;
+}
+.vent-side-actions button:hover{
+  border-color:#d6f055;
+}
+.vent-side-actions span{
+  font-weight:900;
+}
+.vent-side-actions small{
+  color:#a9b09f;
+}
+.vent-side-actions .vent-exit{
+  border-color:#8e5e55;
+  background:rgba(38,21,19,.94);
+}
+
+.weapon-cooldown-ring{
+  position:fixed;
+  pointer-events:none;
+  z-index:140;
+}
+
+@media(max-width:760px){
+  .vent-side-actions{
+    right:calc(8px + env(safe-area-inset-right));
+    width:42vw;
+    gap:5px;
+  }
+  .vent-side-actions button{
+    min-height:48px;
+    padding:7px 8px;
+    font-size:11px;
+  }
+  .vent-inspection-title{
+    left:calc(8px + env(safe-area-inset-left));
+    top:calc(8px + env(safe-area-inset-top));
+    min-width:155px;
+    padding:7px 9px;
+  }
+  .vent-inspection-title strong{font-size:15px}
+}
+
+@media(orientation:portrait) and (max-width:760px){
+  .vent-side-actions{
+    top:auto;
+    bottom:calc(16px + env(safe-area-inset-bottom));
+    transform:none;
+    width:calc(100vw - 24px);
+    right:12px;
+    grid-template-columns:1fr 1fr;
+  }
+}
