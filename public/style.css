@@ -758,3 +758,81 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
 /* v14.1 layout separation */
 .hands{bottom:70px!important}
 @media(max-width:760px),(hover:none) and (pointer:coarse){.hands{bottom:calc(66px + env(safe-area-inset-bottom))!important}}
+
+
+/* =========================================================
+   v16 bunker survival
+========================================================= */
+.vent-panel{
+  position:fixed;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  z-index:190;
+  width:min(390px,calc(100vw - 26px));
+  padding:14px;
+  background:rgba(15,18,16,.98);
+  color:#eee;
+  border:2px solid #697363;
+  box-shadow:0 14px 45px rgba(0,0,0,.55);
+}
+.vent-panel.hidden{display:none!important}
+
+.vent-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  gap:6px;
+  margin-top:12px;
+}
+.vent-actions button{
+  min-height:44px;
+  margin:0;
+  padding:6px;
+  font-size:12px;
+}
+
+.vent-danger{
+  color:#ff7b6a;
+  font-weight:900;
+}
+
+.hallucination-overlay{
+  position:fixed;
+  inset:0;
+  z-index:500;
+  display:grid;
+  place-items:center;
+  pointer-events:none;
+  background:rgba(0,0,0,.82);
+  animation:hallFlash .12s linear alternate infinite;
+}
+.hallucination-overlay.hidden{display:none!important}
+
+.hallucination-face{
+  font-size:min(48vw,320px);
+  color:#000;
+  text-shadow:
+    0 0 8px #fff,
+    0 0 26px rgba(255,255,255,.5);
+  transform:scale(1.4);
+}
+
+@keyframes hallFlash{
+  from{background:rgba(0,0,0,.80)}
+  to{background:rgba(80,0,0,.85)}
+}
+
+.weapon-slash{
+  position:fixed;
+  z-index:120;
+  pointer-events:none;
+}
+
+@media(max-width:760px){
+  .vent-panel{
+    width:90vw;
+  }
+  .vent-actions{
+    grid-template-columns:1fr;
+  }
+}
