@@ -235,6 +235,8 @@ ioClient.on("connect",()=>{
       hunger=r.player.hunger??hunger;
       thirst=r.player.thirst??thirst;
       hygiene=r.player.hygiene??hygiene;
+      fatigue=r.player.fatigue??fatigue;
+      sanityStat=r.player.sanityStat??sanityStat;
       equippedWeapon=r.player.equipped??equippedWeapon;
 
       if(r.player.inExpedition && expeditionRunning){
@@ -261,7 +263,7 @@ const ICON={beans:"🥫",water:"💧",soap:"🧼",tape:"🩹",trap:"🪤",spray:
 const ITEM_NAME={beans:"통조림",water:"물",soap:"비누",tape:"테이프",trap:"덫",spray:"살충제",medkit:"메디킷",battery:"배터리",flashlight:"손전등",mask:"방독면",axe:"도끼",backpack:"가방",blueprint:"블루프린트",toolbox:"공구함",map:"지도",radio:"라디오"};
 let grids={},furn={},players={},items=[],me={},floor=1,bunker,defs={},keys=new Set(),near=null,ends=0,running=false,last=0,lastSend=0;
 let day=1,sanity=0,bounty=0,bountyLevel=1,bunkerStock={},weapons={},power=100,securityState="LOCKED";
-let hp=100,hunger=100,thirst=100,hygiene=100;
+let hp=100,hunger=100,thirst=100,hygiene=100,fatigue=0,sanityStat=100;
 let bunkerPlayer={x:330,y:560};
 
 let expeditionRunning=false;
@@ -279,6 +281,16 @@ let dayLengthMs=120000;
 let expeditionInviteEndsAt=0;
 let expeditionInviteTimerHandle=null;
 let bunkerOthers={};
+let bunkerMobs={};
+let ventStates={
+  ventTop:{closed:false,threat:null,stage:0},
+  ventLeft:{closed:false,threat:null,stage:0},
+  ventBottom:{closed:false,threat:null,stage:0}
+};
+let selectedVentId=null;
+let bunkerFacing={x:1,y:0};
+let bunkerSwingUntil=0;
+let hallucination={active:false,x:0,y:0,start:0,duration:4200,damage:0};
 let lastBunkerSend=0;
 let bunkerKeys=new Set();
 let bunkerRunning=false;
@@ -950,6 +962,8 @@ function updateStatusUI(){
   $("hungerValue").textContent=`${Math.round(hunger)}%`;
   $("thirstValue").textContent=`${Math.round(thirst)}%`;
   if($("hygieneValue"))$("hygieneValue").textContent=`${Math.round(hygiene)}%`;
+  if($("fatigueValue"))$("fatigueValue").textContent=`${Math.round(fatigue)}%`;
+  if($("sanityStatValue"))$("sanityStatValue").textContent=`${Math.round(sanityStat)}%`;
   $("statusDay").textContent=day;
 
   let condition="안정";
@@ -957,6 +971,8 @@ function updateStatusUI(){
   else if(hp<35)condition="위험";
   else if(hunger<30)condition="배고픔";
   else if(thirst<30)condition="목마름";
+  else if(fatigue>75)condition="극심한 피로";
+  else if(sanityStat<40)condition="환각 위험";
 
   $("conditionValue").textContent=condition;
 
@@ -964,6 +980,8 @@ function updateStatusUI(){
   if($("hungerBar"))$("hungerBar").style.width=`${Math.max(0,Math.min(100,hunger))}%`;
   if($("thirstBar"))$("thirstBar").style.width=`${Math.max(0,Math.min(100,thirst))}%`;
   if($("hygieneBar"))$("hygieneBar").style.width=`${Math.max(0,Math.min(100,hygiene))}%`;
+  if($("fatigueBar"))$("fatigueBar").style.width=`${Math.max(0,Math.min(100,fatigue))}%`;
+  if($("sanityStatBar"))$("sanityStatBar").style.width=`${Math.max(0,Math.min(100,sanityStat))}%`;
 }
 
 $("bookButton").onclick=()=>{
@@ -1245,12 +1263,135 @@ function drawBunkerInterior(){
   bctx.font="bold 13px Malgun Gothic";
   bctx.fillText("샤워실",700-camX,112-camY);
 
+  // 환풍구 상태 / 랜덤 위협 표시
+  const threatIcon={
+    ventLady:"👤",
+    spider:"🕷️",
+    rats:"🐀",
+    cameraBug:"📷"
+  };
+
+  BUNKER_OBJECTS
+    .filter(o=>["ventTop","ventLeft","ventBottom"].includes(o.id))
+    .forEach(o=>{
+      const v=ventStates[o.id]||{};
+      const x=o.x-camX,y=o.y-camY;
+
+      if(v.closed){
+        bctx.fillStyle="rgba(35,35,35,.78)";
+        bctx.fillRect(x,y,o.w,o.h);
+        bctx.fillStyle="#ddd";
+        bctx.font="bold 12px sans-serif";
+        bctx.fillText("CLOSED",x+3,y+15);
+      }
+
+      if(v.threat){
+        bctx.font="24px sans-serif";
+        bctx.fillText(
+          threatIcon[v.threat]||"⚠️",
+          x+o.w/2-12,
+          y+o.h/2+9
+        );
+
+        bctx.fillStyle="#ffad68";
+        bctx.font="bold 11px sans-serif";
+        bctx.fillText(
+          `${v.stage}/3`,
+          x+3,
+          y+o.h-4
+        );
+      }
+    });
+
+  // 벙커 내부 적
+  Object.values(bunkerMobs).forEach(m=>{
+    if(!m.alive)return;
+
+    const sx=m.x-camX,sy=m.y-camY;
+
+    bctx.fillStyle=
+      m.type==="rat" ? "#6e5848" :
+      m.type==="spider" ? "#4d362e" :
+      "#6b7450";
+
+    bctx.fillRect(sx,sy,32,32);
+
+    bctx.fillStyle="#d84f45";
+    bctx.fillRect(sx,sy-8,32*(m.hp/m.maxHp),4);
+
+    bctx.fillStyle="#201a17";
+    bctx.font="11px sans-serif";
+    bctx.fillText(
+      m.type==="rat"?"RAT":
+      m.type==="spider"?"SPIDER":"FUMIGATOR",
+      sx-3,sy-12
+    );
+  });
+
+  // 다른 플레이어의 장착 무기
+  Object.values(bunkerOthers).forEach(p=>{
+    if(!p.equipped)return;
+    const sx=p.x-camX+15,sy=p.y-camY+15;
+    const fx=p.facingX??1,fy=p.facingY??0;
+
+    bctx.strokeStyle=p.equipped==="axe"?"#b4bbbc":"#754c2f";
+    bctx.lineWidth=p.equipped==="axe"?7:5;
+    bctx.beginPath();
+    bctx.moveTo(sx+fx*10,sy+fy*10);
+    bctx.lineTo(sx+fx*52,sy+fy*52);
+    bctx.stroke();
+  });
+
   // 플레이어는 화면 중앙
   bctx.fillStyle=me.color||"#fff";
   bctx.fillRect(vw/(2*scale)-15,vh/(2*scale)-15,30,30);
   bctx.strokeStyle="#fff";
   bctx.lineWidth=2;
   bctx.strokeRect(vw/(2*scale)-15,vh/(2*scale)-15,30,30);
+
+  // 내 장착 무기: 마지막 이동 방향을 바라봄
+  if(equippedWeapon){
+    const cx=vw/(2*scale);
+    const cy=vh/(2*scale);
+    const fx=bunkerFacing.x||1;
+    const fy=bunkerFacing.y||0;
+
+    bctx.save();
+    bctx.translate(cx,cy);
+
+    if(performance.now()<bunkerSwingUntil){
+      const angle=Math.atan2(fy,fx);
+      bctx.rotate(angle+0.72);
+    }else{
+      bctx.rotate(Math.atan2(fy,fx));
+    }
+
+    bctx.strokeStyle=
+      equippedWeapon==="axe" ? "#c1c7c8" : "#6d472d";
+    bctx.lineWidth=
+      equippedWeapon==="axe" ? 7 : 5;
+
+    bctx.beginPath();
+    bctx.moveTo(12,0);
+    bctx.lineTo(58,0);
+    bctx.stroke();
+
+    if(equippedWeapon==="axe"){
+      bctx.fillStyle="#aeb8ba";
+      bctx.fillRect(47,-12,22,24);
+    }
+
+    // 베기 이펙트
+    if(performance.now()<bunkerSwingUntil){
+      bctx.strokeStyle="rgba(255,245,210,.78)";
+      bctx.lineWidth=5;
+      bctx.beginPath();
+      bctx.arc(0,0,68,-0.65,0.65);
+      bctx.stroke();
+    }
+
+    bctx.restore();
+  }
 
   // 벙커에 들어온 다른 방원 표시
   Object.values(bunkerOthers).forEach(p=>{
@@ -1325,6 +1466,12 @@ function bunkerMoveLoop(){
     dy*=.707;
   }
 
+  if(Math.abs(dx)+Math.abs(dy)>.05){
+    const len=Math.hypot(dx,dy)||1;
+    bunkerFacing.x=dx/len;
+    bunkerFacing.y=dy/len;
+  }
+
   const nx=bunkerPlayer.x+dx*3.0;
   const ny=bunkerPlayer.y+dy*3.0;
 
@@ -1335,7 +1482,12 @@ function bunkerMoveLoop(){
 
   const now=performance.now();
   if(now-lastBunkerSend>70){
-    ioClient.emit("bunker-move",{x:bunkerPlayer.x,y:bunkerPlayer.y});
+    ioClient.emit("bunker-move",{
+      x:bunkerPlayer.x,
+      y:bunkerPlayer.y,
+      facingX:bunkerFacing.x,
+      facingY:bunkerFacing.y
+    });
     lastBunkerSend=now;
   }
 
@@ -1507,6 +1659,99 @@ function consumeBunker(type){
   });
 }
 
+
+function threatName(type){
+  if(["ventTop","ventLeft","ventBottom"].includes(bunkerNear.id)){
+    openVentPanel(bunkerNear.id);
+    return;
+  }
+
+  if(bunkerNear.id==="bed"){
+    ioClient.emit("sleep-in-bed",{
+      roomCode:room?.code,
+      sessionId,
+      nickname:$("nick").value.trim()
+    },r=>{
+      if(!r?.ok)return toast(r?.message||"잠들 수 없습니다.");
+
+      if(r.stats){
+        hp=r.stats.hp??hp;
+        hunger=r.stats.hunger??hunger;
+        thirst=r.stats.thirst??thirst;
+        hygiene=r.stats.hygiene??hygiene;
+        fatigue=r.stats.fatigue??fatigue;
+        sanityStat=r.stats.sanityStat??sanityStat;
+      }
+
+      updateStatusUI();
+      toast("잠을 자서 피로가 회복되었습니다.");
+    });
+    return;
+  }
+
+
+  return {
+    ventLady:"Vent Lady",
+    spider:"Spider",
+    rats:"Rats",
+    cameraBug:"Camera Bug"
+  }[type]||"없음";
+}
+
+function openVentPanel(ventId){
+  selectedVentId=ventId;
+  const state=ventStates[ventId]||{closed:false,threat:null,stage:0};
+
+  $("ventPanelTitle").textContent=
+    ventId==="ventTop" ? "상단 환풍구" :
+    ventId==="ventLeft" ? "왼쪽 환풍구" :
+    "오른쪽 환풍구";
+
+  $("ventThreatText").innerHTML=state.threat
+    ? `<span class="vent-danger">${threatName(state.threat)} · 접근 ${state.stage}/3</span>`
+    : "현재 위협 없음";
+
+  $("ventToggle").textContent=
+    state.closed ? "벤트 열기" : "벤트 닫기";
+
+  $("ventPanel").classList.remove("hidden");
+}
+
+$("ventPanelClose").onclick=()=>{
+  $("ventPanel").classList.add("hidden");
+};
+
+function doVentAction(action){
+  if(!selectedVentId)return;
+
+  ioClient.emit("vent-action",{
+    action,
+    ventId:selectedVentId,
+    roomCode:room?.code,
+    sessionId,
+    nickname:$("nick").value.trim()
+  },r=>{
+    if(!r?.ok){
+      toast(r?.message||"처리 실패");
+      return;
+    }
+
+    if(r.message)toast(r.message);
+
+    if(action==="toggle"){
+      const state=ventStates[selectedVentId]||{};
+      state.closed=r.closed;
+      ventStates[selectedVentId]=state;
+    }
+
+    openVentPanel(selectedVentId);
+  });
+}
+
+$("ventToggle").onclick=()=>doVentAction("toggle");
+$("ventSpray").onclick=()=>doVentAction("spray");
+$("ventTrap").onclick=()=>doVentAction("trap");
+
 function interactBunker(){
   if(!bunkerNear)return;
 
@@ -1634,6 +1879,23 @@ function enterBunkerScene(){
       bunkerOthers={};
       r.players.forEach(p=>bunkerOthers[p.id]=p);
     }
+  });
+
+  ioClient.emit("get-vent-state",{
+    roomCode:room?.code,
+    sessionId,
+    nickname:$("nick").value.trim()
+  },r=>{
+    if(!r?.ok)return;
+
+    (r.vents||[]).forEach(v=>{
+      ventStates[v.id]={...v};
+    });
+
+    bunkerMobs={};
+    (r.bunkerMobs||[]).forEach(m=>{
+      bunkerMobs[m.id]={...m};
+    });
   });
 
   // 계단은 장식용이며, 벙커 진입 시 계단의 위쪽에서 시작
@@ -2134,30 +2396,30 @@ function swingWeapon(){
   }
 
   swingUntil=performance.now()+260;
-  ioClient.emit("swing-weapon");
+  bunkerSwingUntil=performance.now()+260;
 
-  if(!expeditionRunning || !mutantNear || !mutantNear.alive){
-    return;
-  }
-
-  const distance=Math.hypot(
-    expeditionPlayer.x+15-(mutantNear.x+18),
-    expeditionPlayer.y+15-(mutantNear.y+18)
-  );
-
-  if(distance>95){
-    return;
-  }
-
-  ioClient.emit("attack-mutant",{mutantId:mutantNear.id},r=>{
-    if(!r?.ok){
-      return;
-    }
-
-    if(r.killed){
-      toast("돌연변이를 처치했습니다.");
-    }
+  ioClient.emit("swing-weapon",{
+    roomCode:room?.code,
+    sessionId,
+    nickname:$("nick").value.trim(),
+    facingX:bunkerRunning?bunkerFacing.x:1,
+    facingY:bunkerRunning?bunkerFacing.y:0
+  },r=>{
+    if(r && !r.ok && r.message)toast(r.message);
   });
+
+  if(expeditionRunning && mutantNear && mutantNear.alive){
+    const distance=Math.hypot(
+      expeditionPlayer.x+15-(mutantNear.x+18),
+      expeditionPlayer.y+15-(mutantNear.y+18)
+    );
+
+    if(distance<=95){
+      ioClient.emit("attack-mutant",{mutantId:mutantNear.id},r=>{
+        if(r?.killed)toast("돌연변이를 처치했습니다.");
+      });
+    }
+  }
 }
 
 $("returnBunkerButton").onclick=returnToBunker;
@@ -2326,6 +2588,8 @@ ioClient.on("day-changed",d=>{
     hunger=mine.hunger??hunger;
     thirst=mine.thirst??thirst;
     hygiene=mine.hygiene??hygiene;
+    fatigue=mine.fatigue??fatigue;
+    sanityStat=mine.sanityStat??sanityStat;
   }
 
   updateStatusUI();
@@ -2335,6 +2599,130 @@ ioClient.on("day-changed",d=>{
   }
 
   toast(`DAY ${day}`);
+});
+
+
+ioClient.on("vent-state",d=>{
+  (d.vents||[]).forEach(v=>{
+    ventStates[v.id]={...v};
+  });
+
+  if(selectedVentId && !$("ventPanel").classList.contains("hidden")){
+    openVentPanel(selectedVentId);
+  }
+});
+
+ioClient.on("vent-threat",d=>{
+  ventStates[d.ventId]={
+    ...(ventStates[d.ventId]||{}),
+    threat:d.threat,
+    stage:d.stage
+  };
+
+  toast(`${threatName(d.threat)} · 환풍구 접근 ${d.stage}/3`);
+});
+
+ioClient.on("vent-lady-attack",d=>{
+  bunkerStock=d.bunkerStock||bunkerStock;
+
+  if(d.victimId===myId){
+    hp=Math.max(0,hp-d.damage);
+    toast(`Vent Lady 공격! HP -${d.damage}, 자원을 빼앗겼습니다.`);
+  }else{
+    toast("Vent Lady가 벙커 자원을 훔쳤습니다.");
+  }
+
+  updateStatusUI();
+});
+
+ioClient.on("bunker-mobs",list=>{
+  bunkerMobs={};
+  (list||[]).forEach(m=>bunkerMobs[m.id]={...m});
+});
+
+ioClient.on("bunker-mob-moved",m=>{
+  bunkerMobs[m.id]={...(bunkerMobs[m.id]||{}),...m};
+});
+
+ioClient.on("bunker-mob-hit",d=>{
+  const m=bunkerMobs[d.id];
+  if(!m)return;
+
+  m.hp=d.hp;
+  m.maxHp=d.maxHp;
+  m.alive=d.alive;
+
+  if(!d.alive){
+    toast("벙커의 적을 처치했습니다.");
+    setTimeout(()=>delete bunkerMobs[d.id],350);
+  }
+});
+
+ioClient.on("bunker-player-damaged",d=>{
+  if(d.id!==myId)return;
+  hp=d.hp;
+  updateStatusUI();
+  toast(`${d.reason} · HP -${d.damage}`);
+});
+
+ioClient.on("personal-stats",d=>{
+  hp=d.hp??hp;
+  hunger=d.hunger??hunger;
+  thirst=d.thirst??thirst;
+  hygiene=d.hygiene??hygiene;
+  fatigue=d.fatigue??fatigue;
+  sanityStat=d.sanityStat??sanityStat;
+  updateStatusUI();
+});
+
+ioClient.on("hallucination-spawn",d=>{
+  if(!bunkerRunning)return;
+
+  hallucination={
+    active:true,
+    x:(visualViewport?.width||innerWidth)*0.15,
+    y:(visualViewport?.height||innerHeight)*0.35,
+    start:performance.now(),
+    duration:4200,
+    damage:d.damage||10
+  };
+
+  // 검은 형체가 쫓아오는 연출 후 점프스케어
+  const start=performance.now();
+
+  const chase=()=>{
+    if(!hallucination.active)return;
+
+    const elapsed=performance.now()-start;
+
+    if(elapsed>=hallucination.duration){
+      hallucination.active=false;
+      $("hallucinationOverlay").classList.remove("hidden");
+
+      setTimeout(()=>{
+        $("hallucinationOverlay").classList.add("hidden");
+      },650);
+
+      return;
+    }
+
+    requestAnimationFrame(chase);
+  };
+
+  chase();
+});
+
+ioClient.on("weapon-swung",d=>{
+  if(d.id===myId){
+    bunkerSwingUntil=performance.now()+260;
+    if(Number.isFinite(d.facingX)&&Number.isFinite(d.facingY)){
+      bunkerFacing={x:d.facingX,y:d.facingY};
+    }
+  }else if(bunkerOthers[d.id]){
+    bunkerOthers[d.id].facingX=d.facingX;
+    bunkerOthers[d.id].facingY=d.facingY;
+    bunkerOthers[d.id].equipped=d.weapon;
+  }
 });
 
 ioClient.on("scavenge-result",d=>{
@@ -2437,6 +2825,8 @@ if(mine){
   hunger=mine.hunger??100;
   thirst=mine.thirst??100;
   hygiene=mine.hygiene??100;
+  fatigue=mine.fatigue??0;
+  sanityStat=mine.sanityStat??100;
   equippedWeapon=mine.equipped||null;
 }
 updateStatusUI();$("timer").textContent="60";renderSlots();running=true;last=performance.now();requestAnimationFrame(loop)});
@@ -2470,4 +2860,17 @@ $("globalFullscreen").onclick=async()=>{
 document.addEventListener("fullscreenchange",()=>{
   const b=$("globalFullscreen");
   if(b)b.textContent=document.fullscreenElement?"×":"⛶";
+});
+
+
+const bunkerCombatKeyHandler=true;
+addEventListener("keydown",e=>{
+  if(
+    bunkerRunning &&
+    (e.code==="Space" || e.key.toLowerCase()==="x") &&
+    !e.repeat
+  ){
+    e.preventDefault();
+    swingWeapon();
+  }
 });
