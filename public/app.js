@@ -290,6 +290,9 @@ let ventStates={
 let selectedVentId=null;
 let bunkerFacing={x:1,y:0};
 let bunkerSwingUntil=0;
+let weaponCooldownUntil=0;
+let currentWeaponCooldown=0;
+let ventRenderRunning=false;
 let hallucination={active:false,x:0,y:0,start:0,duration:4200,damage:0};
 let lastBunkerSend=0;
 let bunkerKeys=new Set();
@@ -1263,14 +1266,8 @@ function drawBunkerInterior(){
   bctx.font="bold 13px Malgun Gothic";
   bctx.fillText("샤워실",700-camX,112-camY);
 
-  // 환풍구 상태 / 랜덤 위협 표시
-  const threatIcon={
-    ventLady:"👤",
-    spider:"🕷️",
-    rats:"🐀",
-    cameraBug:"📷"
-  };
-
+  // 환풍구는 벙커 화면에서 위협의 종류를 직접 표시하지 않음.
+  // 플레이어가 환풍구에 접근해 내부 화면을 열어야만 상태를 확인 가능.
   BUNKER_OBJECTS
     .filter(o=>["ventTop","ventLeft","ventBottom"].includes(o.id))
     .forEach(o=>{
@@ -1278,28 +1275,11 @@ function drawBunkerInterior(){
       const x=o.x-camX,y=o.y-camY;
 
       if(v.closed){
-        bctx.fillStyle="rgba(35,35,35,.78)";
+        bctx.fillStyle="rgba(26,28,27,.82)";
         bctx.fillRect(x,y,o.w,o.h);
-        bctx.fillStyle="#ddd";
-        bctx.font="bold 12px sans-serif";
-        bctx.fillText("CLOSED",x+3,y+15);
-      }
-
-      if(v.threat){
-        bctx.font="24px sans-serif";
-        bctx.fillText(
-          threatIcon[v.threat]||"⚠️",
-          x+o.w/2-12,
-          y+o.h/2+9
-        );
-
-        bctx.fillStyle="#ffad68";
-        bctx.font="bold 11px sans-serif";
-        bctx.fillText(
-          `${v.stage}/3`,
-          x+3,
-          y+o.h-4
-        );
+        bctx.fillStyle="#d4d6d1";
+        bctx.font="bold 10px sans-serif";
+        bctx.fillText("CLOSED",x+3,y+14);
       }
     });
 
@@ -1349,48 +1329,101 @@ function drawBunkerInterior(){
   bctx.lineWidth=2;
   bctx.strokeRect(vw/(2*scale)-15,vh/(2*scale)-15,30,30);
 
-  // 내 장착 무기: 마지막 이동 방향을 바라봄
+  // 내 장착 무기: 마지막 이동 방향 + 강화된 무기 모양/베기 효과
   if(equippedWeapon){
     const cx=vw/(2*scale);
     const cy=vh/(2*scale);
     const fx=bunkerFacing.x||1;
     const fy=bunkerFacing.y||0;
+    const baseAngle=Math.atan2(fy,fx);
+    const swinging=performance.now()<bunkerSwingUntil;
 
     bctx.save();
     bctx.translate(cx,cy);
+    bctx.rotate(baseAngle + (swinging ? .72 : 0));
 
-    if(performance.now()<bunkerSwingUntil){
-      const angle=Math.atan2(fy,fx);
-      bctx.rotate(angle+0.72);
-    }else{
-      bctx.rotate(Math.atan2(fy,fx));
-    }
-
-    bctx.strokeStyle=
-      equippedWeapon==="axe" ? "#c1c7c8" : "#6d472d";
-    bctx.lineWidth=
-      equippedWeapon==="axe" ? 7 : 5;
-
+    // 손잡이 그림자
+    bctx.strokeStyle="rgba(0,0,0,.35)";
+    bctx.lineWidth=9;
+    bctx.lineCap="round";
     bctx.beginPath();
-    bctx.moveTo(12,0);
-    bctx.lineTo(58,0);
+    bctx.moveTo(10,3);
+    bctx.lineTo(61,3);
     bctx.stroke();
 
     if(equippedWeapon==="axe"){
-      bctx.fillStyle="#aeb8ba";
-      bctx.fillRect(47,-12,22,24);
+      // 나무 손잡이
+      bctx.strokeStyle="#795033";
+      bctx.lineWidth=6;
+      bctx.beginPath();
+      bctx.moveTo(10,0);
+      bctx.lineTo(62,0);
+      bctx.stroke();
+
+      // 도끼 머리
+      bctx.fillStyle="#adb6b8";
+      bctx.beginPath();
+      bctx.moveTo(49,-15);
+      bctx.lineTo(70,-12);
+      bctx.lineTo(75,0);
+      bctx.lineTo(69,13);
+      bctx.lineTo(50,10);
+      bctx.closePath();
+      bctx.fill();
+
+      bctx.strokeStyle="#5d6567";
+      bctx.lineWidth=2;
+      bctx.stroke();
+    }else{
+      // 나무 막대기: 끝이 굵고 결이 보이게
+      const stickGrad=bctx.createLinearGradient(8,0,68,0);
+      stickGrad.addColorStop(0,"#5b371f");
+      stickGrad.addColorStop(.5,"#8a5c35");
+      stickGrad.addColorStop(1,"#60391f");
+      bctx.strokeStyle=stickGrad;
+      bctx.lineWidth=9;
+      bctx.beginPath();
+      bctx.moveTo(10,0);
+      bctx.lineTo(67,0);
+      bctx.stroke();
+
+      bctx.strokeStyle="rgba(238,190,125,.35)";
+      bctx.lineWidth=2;
+      bctx.beginPath();
+      bctx.moveTo(20,-2);
+      bctx.lineTo(58,-2);
+      bctx.stroke();
     }
 
-    // 베기 이펙트
-    if(performance.now()<bunkerSwingUntil){
-      bctx.strokeStyle="rgba(255,245,210,.78)";
+    if(swinging){
+      // 2중 베기 궤적
+      bctx.strokeStyle="rgba(255,249,218,.92)";
       bctx.lineWidth=5;
       bctx.beginPath();
-      bctx.arc(0,0,68,-0.65,0.65);
+      bctx.arc(0,0,76,-.82,.63);
+      bctx.stroke();
+
+      bctx.strokeStyle="rgba(255,214,132,.38)";
+      bctx.lineWidth=10;
+      bctx.beginPath();
+      bctx.arc(0,0,68,-.76,.55);
       bctx.stroke();
     }
 
     bctx.restore();
+
+    // 쿨타임 원형 표시
+    const remaining=Math.max(0,weaponCooldownUntil-performance.now());
+    if(remaining>0 && currentWeaponCooldown>0){
+      const ratio=1-remaining/currentWeaponCooldown;
+      bctx.save();
+      bctx.strokeStyle="rgba(255,255,255,.75)";
+      bctx.lineWidth=3;
+      bctx.beginPath();
+      bctx.arc(cx,cy+30,12,-Math.PI/2,-Math.PI/2+Math.PI*2*ratio);
+      bctx.stroke();
+      bctx.restore();
+    }
   }
 
   // 벙커에 들어온 다른 방원 표시
@@ -1453,6 +1486,11 @@ function bunkerNearestObject(){
 }
 
 function bunkerMoveLoop(){
+  if(ventRenderRunning){
+    requestAnimationFrame(bunkerMoveLoop);
+    return;
+  }
+
   if(!bunkerRunning)return;
 
   let dx=(bunkerKeys.has("d")?1:0)-(bunkerKeys.has("a")?1:0);
@@ -1660,36 +1698,8 @@ function consumeBunker(type){
 }
 
 
+
 function threatName(type){
-  if(["ventTop","ventLeft","ventBottom"].includes(bunkerNear.id)){
-    openVentPanel(bunkerNear.id);
-    return;
-  }
-
-  if(bunkerNear.id==="bed"){
-    ioClient.emit("sleep-in-bed",{
-      roomCode:room?.code,
-      sessionId,
-      nickname:$("nick").value.trim()
-    },r=>{
-      if(!r?.ok)return toast(r?.message||"잠들 수 없습니다.");
-
-      if(r.stats){
-        hp=r.stats.hp??hp;
-        hunger=r.stats.hunger??hunger;
-        thirst=r.stats.thirst??thirst;
-        hygiene=r.stats.hygiene??hygiene;
-        fatigue=r.stats.fatigue??fatigue;
-        sanityStat=r.stats.sanityStat??sanityStat;
-      }
-
-      updateStatusUI();
-      toast("잠을 자서 피로가 회복되었습니다.");
-    });
-    return;
-  }
-
-
   return {
     ventLady:"Vent Lady",
     spider:"Spider",
@@ -1698,35 +1708,228 @@ function threatName(type){
   }[type]||"없음";
 }
 
-function openVentPanel(ventId){
-  selectedVentId=ventId;
-  const state=ventStates[ventId]||{closed:false,threat:null,stage:0};
-
-  $("ventPanelTitle").textContent=
-    ventId==="ventTop" ? "상단 환풍구" :
-    ventId==="ventLeft" ? "왼쪽 환풍구" :
-    "오른쪽 환풍구";
-
-  $("ventThreatText").innerHTML=state.threat
-    ? `<span class="vent-danger">${threatName(state.threat)} · 접근 ${state.stage}/3</span>`
-    : "현재 위협 없음";
-
-  $("ventToggle").textContent=
-    state.closed ? "벤트 열기" : "벤트 닫기";
-
-  $("ventPanel").classList.remove("hidden");
+function ventDistanceText(stage){
+  if(stage<=0)return "이상 없음";
+  if(stage===1)return "멀리 있음";
+  if(stage===2)return "중간";
+  return "가까움";
 }
 
-$("ventPanelClose").onclick=()=>{
+function resizeVentCanvas(){
+  const c=$("ventCanvas");
+  if(!c)return;
+
+  const d=devicePixelRatio||1;
+  const vw=visualViewport?.width||innerWidth;
+  const vh=visualViewport?.height||innerHeight;
+
+  c.width=Math.round(vw*d);
+  c.height=Math.round(vh*d);
+  c.style.width=`${vw}px`;
+  c.style.height=`${vh}px`;
+
+  c.getContext("2d").setTransform(d,0,0,d,0,0);
+}
+
+function drawVentInspection(){
+  if(!ventRenderRunning)return;
+
+  const c=$("ventCanvas");
+  const vctx=c.getContext("2d");
+  const vw=visualViewport?.width||innerWidth;
+  const vh=visualViewport?.height||innerHeight;
+
+  const state=ventStates[selectedVentId]||{
+    closed:false,
+    threat:null,
+    stage:0
+  };
+
+  vctx.clearRect(0,0,vw,vh);
+
+  // 내부 금속 벤트
+  vctx.fillStyle="#090b0a";
+  vctx.fillRect(0,0,vw,vh);
+
+  const left=vw*.05;
+  const right=vw*.72;
+  const top=vh*.12;
+  const bottom=vh*.88;
+
+  const grad=vctx.createLinearGradient(left,0,right,0);
+  grad.addColorStop(0,"#5c6260");
+  grad.addColorStop(.35,"#303533");
+  grad.addColorStop(1,"#080a09");
+  vctx.fillStyle=grad;
+
+  vctx.beginPath();
+  vctx.moveTo(left,top);
+  vctx.lineTo(right,top+vh*.16);
+  vctx.lineTo(right,bottom-vh*.16);
+  vctx.lineTo(left,bottom);
+  vctx.closePath();
+  vctx.fill();
+
+  // 금속 패널 선
+  vctx.strokeStyle="rgba(190,200,194,.22)";
+  vctx.lineWidth=2;
+  for(let i=1;i<=7;i++){
+    const x=left+(right-left)*(i/8);
+    vctx.beginPath();
+    vctx.moveTo(x,top+vh*.04);
+    vctx.lineTo(x,bottom-vh*.04);
+    vctx.stroke();
+  }
+
+  // 벤트 격자
+  vctx.strokeStyle="rgba(15,18,16,.65)";
+  vctx.lineWidth=4;
+  for(let y=top+30;y<bottom;y+=42){
+    vctx.beginPath();
+    vctx.moveTo(left,y);
+    vctx.lineTo(right,y);
+    vctx.stroke();
+  }
+
+  // 닫힌 벤트
+  if(state.closed){
+    vctx.fillStyle="rgba(27,31,29,.93)";
+    vctx.fillRect(left,top,right-left,bottom-top);
+    vctx.fillStyle="#d5d7d2";
+    vctx.font="900 36px sans-serif";
+    vctx.fillText("VENT CLOSED",left+40,(top+bottom)/2);
+  }
+
+  // 위협은 이 화면에서만 보임.
+  if(state.threat && !state.closed){
+    const stage=Math.max(1,Math.min(3,state.stage||1));
+
+    // stage 1=멀리, stage 2=중간, stage 3=가까움
+    const px=
+      stage===1 ? right-55 :
+      stage===2 ? left+(right-left)*.55 :
+      left+(right-left)*.28;
+
+    const py=(top+bottom)/2;
+
+    const size=
+      stage===1 ? 36 :
+      stage===2 ? 68 :
+      108;
+
+    // 실루엣/적 모양
+    if(state.threat==="rats"){
+      vctx.fillStyle="#3a3029";
+      for(let i=0;i<3;i++){
+        const ox=(i-1)*size*.45;
+        vctx.beginPath();
+        vctx.ellipse(px+ox,py+(i%2)*12,size*.35,size*.22,0,0,Math.PI*2);
+        vctx.fill();
+        vctx.beginPath();
+        vctx.arc(px+ox+size*.28,py-8+(i%2)*12,size*.14,0,Math.PI*2);
+        vctx.fill();
+      }
+    }else if(state.threat==="spider"){
+      vctx.strokeStyle="#28201d";
+      vctx.fillStyle="#2b2320";
+      vctx.lineWidth=Math.max(3,size*.07);
+
+      vctx.beginPath();
+      vctx.arc(px,py,size*.25,0,Math.PI*2);
+      vctx.fill();
+
+      for(let i=0;i<8;i++){
+        const a=(Math.PI*2/8)*i;
+        vctx.beginPath();
+        vctx.moveTo(px+Math.cos(a)*size*.15,py+Math.sin(a)*size*.15);
+        vctx.lineTo(px+Math.cos(a)*size*.55,py+Math.sin(a)*size*.5);
+        vctx.stroke();
+      }
+    }else if(state.threat==="ventLady"){
+      vctx.fillStyle="#151817";
+      vctx.beginPath();
+      vctx.arc(px,py-size*.25,size*.18,0,Math.PI*2);
+      vctx.fill();
+      vctx.fillRect(px-size*.22,py-size*.08,size*.44,size*.72);
+    }else{
+      // Camera Bug / Fumigator precursor
+      vctx.fillStyle="#2e3733";
+      vctx.fillRect(px-size*.32,py-size*.26,size*.64,size*.52);
+      vctx.fillStyle="#bfc46a";
+      vctx.beginPath();
+      vctx.arc(px,py,size*.13,0,Math.PI*2);
+      vctx.fill();
+    }
+
+    // 붉은 눈/경고
+    vctx.fillStyle="rgba(245,64,48,.85)";
+    vctx.beginPath();
+    vctx.arc(px-size*.08,py-size*.1,Math.max(3,size*.035),0,Math.PI*2);
+    vctx.arc(px+size*.08,py-size*.1,Math.max(3,size*.035),0,Math.PI*2);
+    vctx.fill();
+  }
+
+  requestAnimationFrame(drawVentInspection);
+}
+
+function refreshVentPanel(){
+  if(!selectedVentId)return;
+
+  const state=ventStates[selectedVentId]||{
+    closed:false,
+    threat:null,
+    stage:0
+  };
+
+  $("ventPanelTitle").textContent=
+    selectedVentId==="ventTop" ? "상단 환풍구" :
+    selectedVentId==="ventLeft" ? "왼쪽 환풍구" :
+    "오른쪽 환풍구";
+
+  $("ventDistanceLabel").textContent=
+    state.closed ? "닫혀 있음" :
+    state.threat ? ventDistanceText(state.stage) :
+    "이상 없음";
+
+  $("ventToggle").querySelector("span").textContent=
+    state.closed ? "벤트 열기" : "벤트 닫기";
+
+  $("ventSprayCount").textContent=
+    `스프레이 ×${bunkerStock.spray||0}`;
+
+  $("ventTrapCount").textContent=
+    `덫 ×${bunkerStock.trap||0}`;
+}
+
+function openVentPanel(ventId){
+  selectedVentId=ventId;
+  refreshVentPanel();
+
+  $("ventPanel").classList.remove("hidden");
+  ventRenderRunning=true;
+  resizeVentCanvas();
+  drawVentInspection();
+
+  // 벤트 화면에서는 캐릭터 이동 방지
+  resetJoystick();
+}
+
+function closeVentPanel(){
+  ventRenderRunning=false;
   $("ventPanel").classList.add("hidden");
-};
+  selectedVentId=null;
+}
+
+$("ventPanelClose").onclick=closeVentPanel;
 
 function doVentAction(action){
   if(!selectedVentId)return;
 
+  const selected=selectedVentId;
+
   ioClient.emit("vent-action",{
     action,
-    ventId:selectedVentId,
+    ventId:selected,
     roomCode:room?.code,
     sessionId,
     nickname:$("nick").value.trim()
@@ -1739,18 +1942,27 @@ function doVentAction(action){
     if(r.message)toast(r.message);
 
     if(action==="toggle"){
-      const state=ventStates[selectedVentId]||{};
+      const state=ventStates[selected]||{};
       state.closed=r.closed;
-      ventStates[selectedVentId]=state;
+      ventStates[selected]=state;
     }
 
-    openVentPanel(selectedVentId);
+    refreshVentPanel();
   });
 }
 
 $("ventToggle").onclick=()=>doVentAction("toggle");
 $("ventSpray").onclick=()=>doVentAction("spray");
 $("ventTrap").onclick=()=>doVentAction("trap");
+
+addEventListener("resize",()=>{
+  if(ventRenderRunning)resizeVentCanvas();
+});
+if(window.visualViewport){
+  visualViewport.addEventListener("resize",()=>{
+    if(ventRenderRunning)resizeVentCanvas();
+  });
+}
 
 function interactBunker(){
   if(!bunkerNear)return;
@@ -2395,8 +2607,21 @@ function swingWeapon(){
     return;
   }
 
-  swingUntil=performance.now()+260;
-  bunkerSwingUntil=performance.now()+260;
+  const now=performance.now();
+
+  if(now<weaponCooldownUntil){
+    return;
+  }
+
+  const localCooldown=
+    equippedWeapon==="axe" ? 1100 :
+    equippedWeapon==="woodenStick" ? 700 :
+    800;
+
+  currentWeaponCooldown=localCooldown;
+  weaponCooldownUntil=now+localCooldown;
+  swingUntil=now+300;
+  bunkerSwingUntil=now+300;
 
   ioClient.emit("swing-weapon",{
     roomCode:room?.code,
@@ -2405,7 +2630,15 @@ function swingWeapon(){
     facingX:bunkerRunning?bunkerFacing.x:1,
     facingY:bunkerRunning?bunkerFacing.y:0
   },r=>{
-    if(r && !r.ok && r.message)toast(r.message);
+    if(r?.cooldown){
+      weaponCooldownUntil=
+        performance.now()+(r.remaining||0);
+      return;
+    }
+
+    if(r && !r.ok && r.message){
+      toast(r.message);
+    }
   });
 
   if(expeditionRunning && mutantNear && mutantNear.alive){
@@ -2608,7 +2841,7 @@ ioClient.on("vent-state",d=>{
   });
 
   if(selectedVentId && !$("ventPanel").classList.contains("hidden")){
-    openVentPanel(selectedVentId);
+    refreshVentPanel();
   }
 });
 
@@ -2619,7 +2852,11 @@ ioClient.on("vent-threat",d=>{
     stage:d.stage
   };
 
-  toast(`${threatName(d.threat)} · 환풍구 접근 ${d.stage}/3`);
+  // 벙커 맵에서는 종류를 공개하지 않음.
+  // 이미 해당 환풍구를 보고 있을 때만 거리 상태가 갱신됨.
+  if(selectedVentId===d.ventId && ventRenderRunning){
+    refreshVentPanel();
+  }
 });
 
 ioClient.on("vent-lady-attack",d=>{
