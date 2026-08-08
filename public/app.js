@@ -10,16 +10,53 @@ let currentPublicLobby=null;
 let publicLobbyPlayers={};
 let publicLobbyPlayer={x:750,y:500};
 let publicLobbyRunning=false;
+let publicLobbyDrawLoopStarted=false;
+let publicLobbyMoveLoopStarted=false;
 let publicLobbyLastSend=0;
 
 const show=id=>{
-  ["home","publicLobby","lobby","game"].forEach(x=>{
+  const ids=["home","publicLobby","lobby","game"];
+
+  ids.forEach(x=>{
     const el=$(x);
-    if(el)el.classList.toggle("active",x===id);
+    if(!el)return;
+
+    const active=x===id;
+    el.classList.toggle("active",active);
+
+    // active class가 CSS에 먹지 않는 경우에도 화면 전환이 확실하게 되도록
+    el.style.display=active ? (x==="publicLobby"||x==="game" ? "block" : "") : "none";
   });
+
   document.body.classList.toggle("home-scroll",id==="home");
-  document.body.style.overflowY=id==="home"?"auto":"hidden";
-  document.body.style.touchAction=id==="home"?"pan-y":"manipulation";
+
+  if(id==="home"){
+    document.body.style.overflowY="auto";
+    document.body.style.touchAction="pan-y";
+  }else{
+    document.body.style.overflowY="hidden";
+    document.body.style.touchAction="manipulation";
+  }
+
+  // 로비/게임 화면은 표시 직후 캔버스를 다시 맞춤
+  if(id==="publicLobby"){
+    requestAnimationFrame(()=>{
+      resizePublicLobbyCanvas();
+      if(!publicLobbyRunning){
+        publicLobbyRunning=true;
+        requestAnimationFrame(drawPublicLobby);
+        requestAnimationFrame(publicLobbyLoop);
+      }
+    });
+  }
+
+  if(id==="game"){
+    requestAnimationFrame(()=>{
+      resize();
+      if(typeof resizeBunkerCanvas==="function")resizeBunkerCanvas();
+      if(typeof resizeExpeditionCanvas==="function")resizeExpeditionCanvas();
+    });
+  }
 };
 
 function toast(t){
@@ -105,11 +142,20 @@ function joinPublicLobby(lobbyId){
     $("publicChatList").innerHTML="";
     (r.messages||[]).forEach(renderPublicLobbyChat);
 
-    show("publicLobby");
     publicLobbyRunning=true;
+    show("publicLobby");
     resizePublicLobbyCanvas();
-    requestAnimationFrame(drawPublicLobby);
-    requestAnimationFrame(publicLobbyLoop);
+
+    if(!publicLobbyDrawLoopStarted){
+      publicLobbyDrawLoopStarted=true;
+      requestAnimationFrame(drawPublicLobby);
+    }
+
+    if(!publicLobbyMoveLoopStarted){
+      publicLobbyMoveLoopStarted=true;
+      requestAnimationFrame(publicLobbyLoop);
+    }
+
     applyMobileControlsVisibility();
   });
 }
@@ -146,43 +192,26 @@ function joined(r){
   room=r.room;
   myId=r.myId;
 
-  if(currentPublicLobby && room.publicLobbyId===currentPublicLobby){
-    publicLobbyRunning=true;
-    show("publicLobby");
-    renderPartyOverlay();
-    $("partyRoomOverlay").classList.remove("hidden");
-  }else{
-    publicLobbyRunning=false;
-    renderLobby();
-    show("lobby");
-  }
+  renderLobby();
 
   if($("dlg")?.open)$("dlg").close();
-}
+  $("createPartyPanel")?.classList.add("hidden");
+  $("joinPartyPanel")?.classList.add("hidden");
 
-function renderPartyOverlay(){
-  if(!room)return;
-  $("partyOverlayName").textContent=room.name;
-  $("partyOverlayCode").textContent=`PARTY ${room.code}`;
-  $("partyOverlayPlayers").innerHTML=room.players.map(p=>
-    `<div><span style="display:inline-block;width:12px;height:12px;background:${p.color};margin-right:6px"></span>${p.nickname}${p.id===room.hostId?" (방장)":""} ${p.ready?"✓":""}</div>`
-  ).join("");
-  $("partyOverlayStart").style.display=myId===room.hostId?"inline-block":"none";
-  $("partyOverlayReady").style.display=myId===room.hostId?"none":"inline-block";
-}
-
-$("partyOverlayReady").onclick=()=>ioClient.emit("toggle-ready",r=>{if(!r?.ok)toast(r?.message||"준비 변경 실패")});
-$("partyOverlayStart").onclick=()=>ioClient.emit("start-game",r=>{if(!r?.ok)toast(r?.message||"시작 실패")});
-$("partyOverlayLeave").onclick=()=>{
-  ioClient.emit("leave-room",()=>{
-    room=null;
+  // 공용 로비에서 만든 파티는 실제 게임 시작 전까지 로비 화면을 유지
+  if(currentPublicLobby){
     publicLobbyRunning=true;
     show("publicLobby");
-    $("partyRoomOverlay").classList.add("hidden");
-    ioClient.emit("get-public-party-list",currentPublicLobby,r=>{if(r?.ok)renderPartyList(r.parties||[])});
-  });
-};
 
+    const lobbyPanel=$("lobby");
+    if(lobbyPanel){
+      lobbyPanel.classList.add("party-overlay");
+      lobbyPanel.style.display="block";
+    }
+  }else{
+    show("lobby");
+  }
+}
 function renderLobby(){
   if(!room)return;
 
@@ -342,8 +371,8 @@ const plctx=publicLobbyCanvas.getContext("2d");
 
 function resizePublicLobbyCanvas(){
   const d=devicePixelRatio||1;
-  const vw=visualViewport?.width||innerWidth;
-  const vh=visualViewport?.height||innerHeight;
+  const vw=Math.max(320,visualViewport?.width||innerWidth||320);
+  const vh=Math.max(240,visualViewport?.height||innerHeight||240);
 
   publicLobbyCanvas.width=Math.round(vw*d);
   publicLobbyCanvas.height=Math.round(vh*d);
@@ -353,7 +382,10 @@ function resizePublicLobbyCanvas(){
 }
 
 function drawPublicLobby(){
-  if(!publicLobbyRunning)return;
+  if(!publicLobbyRunning){
+    publicLobbyDrawLoopStarted=false;
+    return;
+  }
 
   const vw=visualViewport?.width||innerWidth;
   const vh=visualViewport?.height||innerHeight;
@@ -414,7 +446,10 @@ function drawPublicLobby(){
 }
 
 function publicLobbyLoop(t){
-  if(!publicLobbyRunning)return;
+  if(!publicLobbyRunning){
+    publicLobbyMoveLoopStarted=false;
+    return;
+  }
 
   let dx=(keys.has("d")||keys.has("arrowright")?1:0)-
          (keys.has("a")||keys.has("arrowleft")?1:0);
@@ -461,6 +496,8 @@ ioClient.on("public-lobby-player-left",d=>{
 
 $("leavePublicLobby").onclick=()=>{
   publicLobbyRunning=false;
+  publicLobbyDrawLoopStarted=false;
+  publicLobbyMoveLoopStarted=false;
   currentPublicLobby=null;
   show("home");
 };
@@ -3786,3 +3823,9 @@ function combatScreenPointer(e){
 
 $("bunkerCanvas").addEventListener("pointerdown",combatScreenPointer);
 $("expeditionCanvas").addEventListener("pointerdown",combatScreenPointer);
+
+
+ioClient.on("connect_error",err=>{
+  console.error("Socket connection error:",err);
+  toast("서버 연결 오류");
+});
