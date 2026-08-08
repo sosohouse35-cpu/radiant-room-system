@@ -48,9 +48,9 @@ const pick=a=>a[Math.floor(Math.random()*a.length)];
 const shuffle=a=>[...a].sort(()=>Math.random()-.5);
 
 function code(){const c="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s;do{s=Array.from({length:6},()=>c[Math.floor(Math.random()*c.length)]).join("")}while(rooms.has(s));return s}
-function view(r){return {code:r.code,name:r.name,maxPlayers:r.maxPlayers,hostId:r.hostId,status:r.status,players:[...r.players.values()].map(p=>({id:p.id,nickname:p.nickname,ready:p.ready,color:p.color}))}}
+function view(r){return {code:r.code,name:r.name,publicLobbyId:r.publicLobbyId,private:r.private,maxPlayers:r.maxPlayers,hostId:r.hostId,status:r.status,players:[...r.players.values()].map(p=>({id:p.id,nickname:p.nickname,ready:p.ready,color:p.color}))}}
 function list(){return [...rooms.values()].filter(r=>r.status==="waiting").map(r=>({code:r.code,name:r.name,playerCount:r.players.size,maxPlayers:r.maxPlayers}))}
-function emit(r){io.to(r.code).emit("room-updated",view(r));io.emit("room-list",list())}
+function emit(r){io.to(r.code).emit("room-updated",view(r));io.emit("room-list",list());if(r.publicLobbyId)emitPublicParties(r.publicLobbyId)}
 function slots(p){return p.hands.reduce((s,t)=>s+(DEFS[t]?.slots||1),0)}
 function makeItems(){
  const out=[], add=(type,p)=>out.push({id:"i"+out.length,type,slots:DEFS[type].slots,...p,taken:false});
@@ -293,6 +293,37 @@ function publicPartiesForLobby(lobbyId){
     .map(r=>({code:r.code,name:r.name,playerCount:r.players.size,maxPlayers:r.maxPlayers}));
 }
 
+
+function resolveRoomPlayer(socket,data={}){
+  let room=rooms.get(socketRoom.get(socket.id));
+  let player=room?.players.get(socket.id);
+  if(room&&player)return {room,player};
+
+  const sessionId=String(data?.sessionId||"");
+  const roomCode=String(data?.roomCode||"").toUpperCase();
+  const nickname=String(data?.nickname||"");
+
+  const candidates=roomCode&&rooms.has(roomCode)?[rooms.get(roomCode)]:[...rooms.values()];
+  for(const candidate of candidates){
+    const entry=[...candidate.players.entries()].find(([,p])=>
+      (sessionId&&p.sessionId===sessionId) || (nickname&&p.nickname===nickname)
+    );
+    if(!entry)continue;
+    const [oldId,p]=entry;
+    if(oldId!==socket.id){
+      candidate.players.delete(oldId);
+      socketRoom.delete(oldId);
+      p.id=socket.id;
+      candidate.players.set(socket.id,p);
+      if(candidate.hostId===oldId)candidate.hostId=socket.id;
+    }
+    socketRoom.set(socket.id,candidate.code);
+    socket.join(candidate.code);
+    return {room:candidate,player:p};
+  }
+  return {room:null,player:null};
+}
+
 io.on("connection",s=>{
  s.on("get-public-party-list",(lobbyId,cb=()=>{})=>{
   const id=Math.max(1,Math.min(10,parseInt(lobbyId)||1));
@@ -363,12 +394,12 @@ io.on("connection",s=>{
 
  s.emit("room-list",list());
  s.on("create-room",(d,cb=()=>{})=>{
-  leavePublicLobby(s);
+  const originLobbyId=socketLobby.get(s.id)||parseInt(d?.publicLobbyId)||null;
   const c=code(),p={id:s.id,nickname:String(d.nickname||"").trim().slice(0,14),sessionId:String(d.sessionId||""),ready:true,color:(COLORS.includes(d?.color)?d.color:COLORS[0]),floor:1,x:1180,y:980,hands:[],stored:[]};
   if(!p.nickname||!String(d.roomName||"").trim())return cb({ok:false,message:"입력 확인"});
   const r={
     code:c,
-    publicLobbyId:parseInt(d?.publicLobbyId)||null,
+    publicLobbyId:originLobbyId,
     private:Boolean(d?.private),
     name:String(d.roomName).trim().slice(0,24),
     maxPlayers:Math.max(1,Math.min(8,+d.maxPlayers||4)),
@@ -391,17 +422,16 @@ io.on("connection",s=>{
     expeditionInvite:null,
     expeditionItems:[]
   };
-  rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id});emit(r)
+  rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id});emit(r);emitPublicParties(originLobbyId)
  });
  s.on("join-room",(d,cb=()=>{})=>{
   const requestedLobby=parseInt(d?.publicLobbyId)||null;
-  leavePublicLobby(s);
   const r=rooms.get(String(d.code||"").toUpperCase());
   if(!r)return cb({ok:false,message:"방 없음"});
   if(requestedLobby && r.publicLobbyId && r.publicLobbyId!==requestedLobby){
     return cb({ok:false,message:"현재 로비의 파티가 아닙니다."});
   }
-  join(s,r,d.nickname,cb,d.color,d.sessionId)
+  join(s,r,d.nickname,(result)=>{ if(result?.ok)emitPublicParties(requestedLobby||r.publicLobbyId); cb(result); },d.color,d.sessionId)
  });
  s.on("toggle-ready",(cb=()=>{})=>{const r=rooms.get(socketRoom.get(s.id));if(!r)return cb({ok:false});if(r.hostId===s.id)return cb({ok:false});const p=r.players.get(s.id);p.ready=!p.ready;cb({ok:true});emit(r)});
  s.on("start-game",(cb=()=>{})=>{
@@ -830,9 +860,11 @@ io.on("connection",s=>{
   io.to(r.code).emit("weapon-swung",{id:p.id,weapon:p.equipped,time:Date.now()});
  });
 
- s.on("consume-bunker-item",(type,cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id));
-  if(!r)return cb({ok:false,message:"방 없음"});
+ s.on("consume-bunker-item",(payload,cb=()=>{})=>{
+  const type=typeof payload==="string"?payload:payload?.type;
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
+  if(!r||!p)return cb({ok:false,message:"방 정보를 복구하지 못했습니다."});
 
   const consumable=new Set(["water","beans","medkit","soap"]);
   if(!consumable.has(type))return cb({ok:false,message:"사용할 수 없는 물품입니다."});
