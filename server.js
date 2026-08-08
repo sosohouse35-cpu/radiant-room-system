@@ -26,8 +26,8 @@ const EXPEDITION_INVITE_MS=15000;
 // v16 bunker survival
 const STAT_TICK_MS=10000;
 const DAMAGE_TICK_MS=3000;
-const VENT_MIN_DELAY_MS=70000;
-const VENT_MAX_DELAY_MS=140000;
+const VENT_MIN_DELAY_MS=50000;
+const VENT_MAX_DELAY_MS=100000;
 const VENT_STAGE_MS=30000;
 
 const DEFS={
@@ -912,6 +912,32 @@ io.on("connection",s=>{
   if(!r||!p||!p.inExpedition)return cb({ok:false,message:"탐사 중이 아닙니다."});
   if(!p.equipped)return cb({ok:false,message:"무기를 장착하세요."});
 
+  const weaponCooldown={
+    woodenStick:700,
+    axe:1100
+  };
+
+  const cooldown=weaponCooldown[p.equipped]||800;
+  const now=Date.now();
+  const elapsed=now-(p.lastWeaponSwingAt||0);
+
+  if(elapsed<cooldown){
+    return cb({
+      ok:false,
+      cooldown:true,
+      remaining:cooldown-elapsed
+    });
+  }
+
+  const fx=Number(data?.facingX),fy=Number(data?.facingY);
+  if(Number.isFinite(fx)&&Number.isFinite(fy)&&(Math.abs(fx)+Math.abs(fy)>.05)){
+    const len=Math.hypot(fx,fy)||1;
+    p.facingX=fx/len;
+    p.facingY=fy/len;
+  }
+
+  p.lastWeaponSwingAt=now;
+
   const mutant=r.expeditionMutants.find(m=>m.id===data?.mutantId);
   if(!mutant||!mutant.alive)return cb({ok:false,message:"대상이 없습니다."});
 
@@ -942,7 +968,8 @@ io.on("connection",s=>{
     ok:true,
     damage,
     killed:!mutant.alive,
-    hp:mutant.hp
+    hp:mutant.hp,
+    cooldown
   });
  });
 
