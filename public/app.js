@@ -1,6 +1,12 @@
 "use strict";
 const ioClient=io(),$=id=>document.getElementById(id);
 
+// DOM canvas references must exist before socket callbacks can fire.
+const publicLobbyCanvas=$("publicLobbyCanvas");
+const plctx=publicLobbyCanvas?.getContext("2d")||null;
+const canvas=$("canvas");
+const ctx=canvas?.getContext("2d")||null;
+
 let room=null,myId=null;
 const sessionId=localStorage.getItem("afterglow-session") ||
   (crypto.randomUUID ? crypto.randomUUID() : `s-${Date.now()}-${Math.random()}`);
@@ -226,6 +232,34 @@ function renderLobby(){
   $("ready").style.display=myId===room.hostId?"none":"inline-block";
 }
 
+
+function renderPartyOverlay(){
+  if(!room)return;
+
+  renderLobby();
+
+  const lobbyPanel=$("lobby");
+  if(!lobbyPanel)return;
+
+  lobbyPanel.classList.add("party-overlay");
+  lobbyPanel.style.display="block";
+
+  // Keep the actual public lobby canvas alive behind the party panel.
+  if(currentPublicLobby){
+    publicLobbyRunning=true;
+
+    if(!publicLobbyDrawLoopStarted){
+      publicLobbyDrawLoopStarted=true;
+      requestAnimationFrame(drawPublicLobby);
+    }
+
+    if(!publicLobbyMoveLoopStarted){
+      publicLobbyMoveLoopStarted=true;
+      requestAnimationFrame(publicLobbyLoop);
+    }
+  }
+}
+
 $("ready").onclick=()=>ioClient.emit("toggle-ready",r=>{
   if(!r?.ok)toast("변경 실패");
 });
@@ -282,66 +316,65 @@ ioClient.on("connect",()=>{
       }
     }
 
-    updateStatusUI();
+    requestAnimationFrame(()=>{
+      if(typeof updateStatusUI==="function")updateStatusUI();
+    });
   });
 });
 
-const canvas=$("canvas"),ctx=canvas.getContext("2d");
 const W=2400,H=1600,T=40,P=30,SPEED=235,COLS=W/T,ROWS=H/T;
 const ICON={beans:"🥫",water:"💧",soap:"🧼",tape:"🩹",trap:"🪤",spray:"🧴",medkit:"💊",battery:"🔋",flashlight:"🔦",mask:"😷",axe:"🪓",backpack:"🎒",blueprint:"📘",toolbox:"🧰",map:"🗺️",radio:"📻"};
 const ITEM_NAME={beans:"통조림",water:"물",soap:"비누",tape:"테이프",trap:"덫",spray:"살충제",medkit:"메디킷",battery:"배터리",flashlight:"손전등",mask:"방독면",axe:"도끼",backpack:"가방",blueprint:"블루프린트",toolbox:"공구함",map:"지도",radio:"라디오"};
 let grids={},furn={},players={},items=[],me={},floor=1,bunker,defs={},keys=new Set(),near=null,ends=0,running=false,last=0,lastSend=0;
-let day=1,sanity=0,bounty=0,bountyLevel=1,bunkerStock={},weapons={},power=100,securityState="LOCKED";
-let hp=100,hunger=100,thirst=100,hygiene=100,fatigue=0,sanityStat=100;
-let bunkerPlayer={x:330,y:560};
+var day=1,sanity=0,bounty=0,bountyLevel=1,bunkerStock={},weapons={},power=100,securityState="LOCKED";
+var hp=100,hunger=100,thirst=100,hygiene=100,fatigue=0,sanityStat=100;
+var bunkerPlayer={x:330,y:560};
 
-let expeditionRunning=false;
-let expeditionItems=[];
-let expeditionPlayer={x:250,y:850};
-let expeditionOthers={};
-let expeditionMutants={};
-let mutantNear=null;
-let expeditionNear=null;
-let expeditionLastSend=0;
-let expeditionFacing={x:1,y:0};
-let expeditionSwingUntil=0;
-let expeditionLocation="grocery";
-let expeditionReturnPoint={x:250,y:850};
-let expeditionReturnNear=false;
-let expeditionHandLimit=4;
-let playerSick=false;
-let hospitalAbomination=null;
-let hospitalGlass=[];
-let hospitalTripwires=[];
-    expeditionFlashlight=false;
-    expeditionJumping=false;
-let expeditionJumping=false;
-let expeditionJumpUntil=0;
-let expeditionFlashlight=false;
-let equippedWeapon=null;
-let swingUntil=0;
-let dayStartedAt=Date.now();
-let dayLengthMs=120000;
-let expeditionInviteEndsAt=0;
-let expeditionInviteTimerHandle=null;
-let bunkerOthers={};
-let bunkerMobs={};
-let ventStates={
+var expeditionRunning=false;
+var expeditionItems=[];
+var expeditionPlayer={x:250,y:850};
+var expeditionOthers={};
+var expeditionMutants={};
+var mutantNear=null;
+var expeditionNear=null;
+var expeditionLastSend=0;
+var expeditionFacing={x:1,y:0};
+var expeditionSwingUntil=0;
+var expeditionLocation="grocery";
+var expeditionReturnPoint={x:250,y:850};
+var expeditionReturnNear=false;
+var expeditionHandLimit=4;
+var playerSick=false;
+var hospitalAbomination=null;
+var hospitalGlass=[];
+var hospitalTripwires=[];
+var expeditionJumping=false;
+var expeditionJumpUntil=0;
+var expeditionFlashlight=false;
+var equippedWeapon=null;
+var swingUntil=0;
+var dayStartedAt=Date.now();
+var dayLengthMs=120000;
+var expeditionInviteEndsAt=0;
+var expeditionInviteTimerHandle=null;
+var bunkerOthers={};
+var bunkerMobs={};
+var ventStates={
   ventTop:{closed:false,threat:null,stage:0},
   ventLeft:{closed:false,threat:null,stage:0},
   ventBottom:{closed:false,threat:null,stage:0}
 };
-let selectedVentId=null;
-let bunkerFacing={x:1,y:0};
-let bunkerSwingUntil=0;
-let weaponCooldownUntil=0;
-let currentWeaponCooldown=0;
-let ventRenderRunning=false;
-let hallucination={active:false,x:0,y:0,start:0,duration:4200,damage:0};
-let lastBunkerSend=0;
-let bunkerKeys=new Set();
-let bunkerRunning=false;
-let bunkerNear=null;
+var selectedVentId=null;
+var bunkerFacing={x:1,y:0};
+var bunkerSwingUntil=0;
+var weaponCooldownUntil=0;
+var currentWeaponCooldown=0;
+var ventRenderRunning=false;
+var hallucination={active:false,x:0,y:0,start:0,duration:4200,damage:0};
+var lastBunkerSend=0;
+var bunkerKeys=new Set();
+var bunkerRunning=false;
+var bunkerNear=null;
 const roomsByFloor={
 1:[{n:"주방",x:80,y:120,w:800,h:520},{n:"거실",x:920,y:120,w:720,h:520},{n:"1층 화장실",x:1680,y:120,w:600,h:520},{n:"차고",x:80,y:720,w:800,h:640},{n:"벙커/복도",x:920,y:720,w:1360,h:640}],
 2:[{n:"침실",x:80,y:120,w:880,h:600},{n:"서재",x:1000,y:120,w:720,h:600},{n:"2층 화장실",x:1760,y:120,w:520,h:600},{n:"복도",x:80,y:800,w:2200,h:440}],
@@ -366,10 +399,9 @@ let joystickY = 0;
 // =========================================================
 // 공용 로비
 // =========================================================
-const publicLobbyCanvas=$("publicLobbyCanvas");
-const plctx=publicLobbyCanvas.getContext("2d");
 
 function resizePublicLobbyCanvas(){
+  if(!publicLobbyCanvas||!plctx)return;
   const d=devicePixelRatio||1;
   const vw=Math.max(320,visualViewport?.width||innerWidth||320);
   const vh=Math.max(240,visualViewport?.height||innerHeight||240);
@@ -382,6 +414,11 @@ function resizePublicLobbyCanvas(){
 }
 
 function drawPublicLobby(){
+  if(!publicLobbyCanvas||!plctx){
+    publicLobbyDrawLoopStarted=false;
+    return;
+  }
+
   if(!publicLobbyRunning){
     publicLobbyDrawLoopStarted=false;
     return;
