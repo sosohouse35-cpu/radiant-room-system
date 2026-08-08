@@ -274,6 +274,8 @@ let expeditionMutants={};
 let mutantNear=null;
 let expeditionNear=null;
 let expeditionLastSend=0;
+let expeditionFacing={x:1,y:0};
+let expeditionSwingUntil=0;
 let equippedWeapon=null;
 let swingUntil=0;
 let dayStartedAt=Date.now();
@@ -1739,139 +1741,212 @@ function drawVentInspection(){
   const vw=visualViewport?.width||innerWidth;
   const vh=visualViewport?.height||innerHeight;
 
-  const state=ventStates[selectedVentId]||{
-    closed:false,
-    threat:null,
-    stage:0
-  };
+  const state=ventStates[selectedVentId]||{closed:false,threat:null,stage:0};
 
   vctx.clearRect(0,0,vw,vh);
-
-  // 내부 금속 벤트
-  vctx.fillStyle="#090b0a";
+  vctx.fillStyle="#050706";
   vctx.fillRect(0,0,vw,vh);
 
-  const left=vw*.05;
-  const right=vw*.72;
-  const top=vh*.12;
-  const bottom=vh*.88;
+  const entranceX=vw*.055;
+  const farX=vw*.69;
+  const topNear=vh*.10;
+  const bottomNear=vh*.90;
+  const topFar=vh*.30;
+  const bottomFar=vh*.70;
 
-  const grad=vctx.createLinearGradient(left,0,right,0);
-  grad.addColorStop(0,"#5c6260");
-  grad.addColorStop(.35,"#303533");
-  grad.addColorStop(1,"#080a09");
-  vctx.fillStyle=grad;
-
+  const tunnelGrad=vctx.createLinearGradient(entranceX,0,farX,0);
+  tunnelGrad.addColorStop(0,"#6c7371");
+  tunnelGrad.addColorStop(.18,"#4f5654");
+  tunnelGrad.addColorStop(.55,"#252a28");
+  tunnelGrad.addColorStop(1,"#090b0a");
+  vctx.fillStyle=tunnelGrad;
   vctx.beginPath();
-  vctx.moveTo(left,top);
-  vctx.lineTo(right,top+vh*.16);
-  vctx.lineTo(right,bottom-vh*.16);
-  vctx.lineTo(left,bottom);
+  vctx.moveTo(entranceX,topNear);
+  vctx.lineTo(farX,topFar);
+  vctx.lineTo(farX,bottomFar);
+  vctx.lineTo(entranceX,bottomNear);
   vctx.closePath();
   vctx.fill();
 
-  // 금속 패널 선
-  vctx.strokeStyle="rgba(190,200,194,.22)";
+  vctx.strokeStyle="rgba(190,201,196,.20)";
   vctx.lineWidth=2;
   for(let i=1;i<=7;i++){
-    const x=left+(right-left)*(i/8);
+    const t=i/8;
+    const x=entranceX+(farX-entranceX)*t;
+    const top=topNear+(topFar-topNear)*t;
+    const bottom=bottomNear+(bottomFar-bottomNear)*t;
     vctx.beginPath();
-    vctx.moveTo(x,top+vh*.04);
-    vctx.lineTo(x,bottom-vh*.04);
+    vctx.moveTo(x,top);
+    vctx.lineTo(x,bottom);
     vctx.stroke();
-  }
 
-  // 벤트 격자
-  vctx.strokeStyle="rgba(15,18,16,.65)";
-  vctx.lineWidth=4;
-  for(let y=top+30;y<bottom;y+=42){
+    vctx.fillStyle="rgba(215,221,218,.34)";
     vctx.beginPath();
-    vctx.moveTo(left,y);
-    vctx.lineTo(right,y);
-    vctx.stroke();
-  }
-
-  // 닫힌 벤트
-  if(state.closed){
-    vctx.fillStyle="rgba(27,31,29,.93)";
-    vctx.fillRect(left,top,right-left,bottom-top);
-    vctx.fillStyle="#d5d7d2";
-    vctx.font="900 36px sans-serif";
-    vctx.fillText("VENT CLOSED",left+40,(top+bottom)/2);
-  }
-
-  // 위협은 이 화면에서만 보임.
-  if(state.threat && !state.closed){
-    const stage=Math.max(1,Math.min(3,state.stage||1));
-
-    // stage 1=멀리, stage 2=중간, stage 3=가까움
-    const px=
-      stage===1 ? right-55 :
-      stage===2 ? left+(right-left)*.55 :
-      left+(right-left)*.28;
-
-    const py=(top+bottom)/2;
-
-    const size=
-      stage===1 ? 36 :
-      stage===2 ? 68 :
-      108;
-
-    // 실루엣/적 모양
-    if(state.threat==="rats"){
-      vctx.fillStyle="#3a3029";
-      for(let i=0;i<3;i++){
-        const ox=(i-1)*size*.45;
-        vctx.beginPath();
-        vctx.ellipse(px+ox,py+(i%2)*12,size*.35,size*.22,0,0,Math.PI*2);
-        vctx.fill();
-        vctx.beginPath();
-        vctx.arc(px+ox+size*.28,py-8+(i%2)*12,size*.14,0,Math.PI*2);
-        vctx.fill();
-      }
-    }else if(state.threat==="spider"){
-      vctx.strokeStyle="#28201d";
-      vctx.fillStyle="#2b2320";
-      vctx.lineWidth=Math.max(3,size*.07);
-
-      vctx.beginPath();
-      vctx.arc(px,py,size*.25,0,Math.PI*2);
-      vctx.fill();
-
-      for(let i=0;i<8;i++){
-        const a=(Math.PI*2/8)*i;
-        vctx.beginPath();
-        vctx.moveTo(px+Math.cos(a)*size*.15,py+Math.sin(a)*size*.15);
-        vctx.lineTo(px+Math.cos(a)*size*.55,py+Math.sin(a)*size*.5);
-        vctx.stroke();
-      }
-    }else if(state.threat==="ventLady"){
-      vctx.fillStyle="#151817";
-      vctx.beginPath();
-      vctx.arc(px,py-size*.25,size*.18,0,Math.PI*2);
-      vctx.fill();
-      vctx.fillRect(px-size*.22,py-size*.08,size*.44,size*.72);
-    }else{
-      // Camera Bug / Fumigator precursor
-      vctx.fillStyle="#2e3733";
-      vctx.fillRect(px-size*.32,py-size*.26,size*.64,size*.52);
-      vctx.fillStyle="#bfc46a";
-      vctx.beginPath();
-      vctx.arc(px,py,size*.13,0,Math.PI*2);
-      vctx.fill();
-    }
-
-    // 붉은 눈/경고
-    vctx.fillStyle="rgba(245,64,48,.85)";
-    vctx.beginPath();
-    vctx.arc(px-size*.08,py-size*.1,Math.max(3,size*.035),0,Math.PI*2);
-    vctx.arc(px+size*.08,py-size*.1,Math.max(3,size*.035),0,Math.PI*2);
+    vctx.arc(x,top+10,2.4,0,Math.PI*2);
+    vctx.arc(x,bottom-10,2.4,0,Math.PI*2);
     vctx.fill();
   }
 
+  vctx.strokeStyle="rgba(25,29,27,.70)";
+  vctx.lineWidth=3;
+  for(let i=1;i<9;i++){
+    const t=i/9;
+    const y=bottomNear-(bottomNear-bottomFar)*t;
+    vctx.beginPath();
+    vctx.moveTo(entranceX,y);
+    vctx.lineTo(farX,bottomFar);
+    vctx.stroke();
+  }
+
+  vctx.strokeStyle="#493f34";
+  vctx.lineWidth=4;
+  vctx.beginPath();
+  vctx.moveTo(entranceX+20,topNear+65);
+  vctx.bezierCurveTo(vw*.24,topNear+38,vw*.45,topFar+30,farX-15,topFar+48);
+  vctx.stroke();
+
+  vctx.strokeStyle="#66522e";
+  vctx.lineWidth=2;
+  vctx.beginPath();
+  vctx.moveTo(entranceX+20,topNear+74);
+  vctx.bezierCurveTo(vw*.28,topNear+60,vw*.47,topFar+44,farX-10,topFar+60);
+  vctx.stroke();
+
+  const fanX=farX-20;
+  const fanY=(topFar+bottomFar)/2;
+  const fanR=Math.max(42,Math.min(vw,vh)*.085);
+
+  vctx.fillStyle="#111512";
+  vctx.beginPath();
+  vctx.arc(fanX,fanY,fanR*1.22,0,Math.PI*2);
+  vctx.fill();
+
+  vctx.strokeStyle="#4a514e";
+  vctx.lineWidth=6;
+  vctx.beginPath();
+  vctx.arc(fanX,fanY,fanR*1.05,0,Math.PI*2);
+  vctx.stroke();
+
+  vctx.save();
+  vctx.translate(fanX,fanY);
+  vctx.rotate(performance.now()/1500);
+  for(let i=0;i<6;i++){
+    vctx.rotate(Math.PI/3);
+    vctx.fillStyle="#343a37";
+    vctx.beginPath();
+    vctx.moveTo(5,-8);
+    vctx.quadraticCurveTo(fanR*.62,-fanR*.20,fanR*.84,5);
+    vctx.quadraticCurveTo(fanR*.55,fanR*.16,8,9);
+    vctx.closePath();
+    vctx.fill();
+  }
+  vctx.fillStyle="#202522";
+  vctx.beginPath();
+  vctx.arc(0,0,fanR*.18,0,Math.PI*2);
+  vctx.fill();
+  vctx.restore();
+
+  const lightX=vw*.24;
+  const lightY=topNear+58;
+  const lightGrad=vctx.createRadialGradient(lightX,lightY,2,lightX,lightY,85);
+  lightGrad.addColorStop(0,"rgba(227,220,162,.68)");
+  lightGrad.addColorStop(1,"rgba(227,220,162,0)");
+  vctx.fillStyle=lightGrad;
+  vctx.beginPath();
+  vctx.arc(lightX,lightY,85,0,Math.PI*2);
+  vctx.fill();
+
+  vctx.fillStyle="#d8d1a0";
+  vctx.fillRect(lightX-15,lightY-4,30,8);
+
+  if(!state.threat && !state.closed){
+    vctx.fillStyle="rgba(216,224,219,.68)";
+    vctx.font="700 15px sans-serif";
+    vctx.fillText("NO MOVEMENT",entranceX+36,bottomNear-30);
+  }
+
+  if(state.closed){
+    vctx.fillStyle="rgba(23,27,25,.97)";
+    vctx.fillRect(entranceX,topNear,farX-entranceX,bottomNear-topNear);
+    vctx.strokeStyle="#515a56";
+    vctx.lineWidth=8;
+    for(let y=topNear+30;y<bottomNear;y+=44){
+      vctx.beginPath();
+      vctx.moveTo(entranceX+10,y);
+      vctx.lineTo(farX-10,y);
+      vctx.stroke();
+    }
+    vctx.fillStyle="#dadcd6";
+    vctx.font="900 34px sans-serif";
+    vctx.fillText("VENT CLOSED",entranceX+35,(topNear+bottomNear)/2);
+  }
+
+  if(state.threat && !state.closed){
+    const stage=Math.max(1,Math.min(3,state.stage||1));
+    const px=stage===1 ? farX-45 : stage===2 ? entranceX+(farX-entranceX)*.57 : entranceX+(farX-entranceX)*.26;
+    const py=(topNear+bottomNear)/2;
+    const size=stage===1 ? 34 : stage===2 ? 66 : 108;
+    vctx.globalAlpha=stage===1 ? .58 : stage===2 ? .80 : 1;
+
+    if(state.threat==="rats"){
+      for(let i=0;i<3;i++){
+        const ox=(i-1)*size*.42;
+        vctx.fillStyle="#3d3129";
+        vctx.beginPath();
+        vctx.ellipse(px+ox,py+(i%2)*11,size*.34,size*.20,0,0,Math.PI*2);
+        vctx.fill();
+        vctx.beginPath();
+        vctx.arc(px+ox+size*.27,py-7+(i%2)*11,size*.13,0,Math.PI*2);
+        vctx.fill();
+      }
+    }else if(state.threat==="spider"){
+      vctx.strokeStyle="#29201d";
+      vctx.fillStyle="#302521";
+      vctx.lineWidth=Math.max(3,size*.065);
+      vctx.beginPath();
+      vctx.ellipse(px,py,size*.26,size*.21,0,0,Math.PI*2);
+      vctx.fill();
+      for(let i=0;i<8;i++){
+        const a=(Math.PI*2/8)*i;
+        vctx.beginPath();
+        vctx.moveTo(px+Math.cos(a)*size*.12,py+Math.sin(a)*size*.10);
+        vctx.lineTo(px+Math.cos(a)*size*.55,py+Math.sin(a)*size*.48);
+        vctx.stroke();
+      }
+    }else if(state.threat==="ventLady"){
+      vctx.fillStyle="#111413";
+      vctx.beginPath();
+      vctx.arc(px,py-size*.32,size*.18,0,Math.PI*2);
+      vctx.fill();
+      vctx.beginPath();
+      vctx.moveTo(px-size*.21,py-size*.13);
+      vctx.lineTo(px+size*.21,py-size*.13);
+      vctx.lineTo(px+size*.31,py+size*.53);
+      vctx.lineTo(px-size*.31,py+size*.53);
+      vctx.closePath();
+      vctx.fill();
+    }else{
+      vctx.fillStyle="#303936";
+      vctx.fillRect(px-size*.34,py-size*.27,size*.68,size*.54);
+      vctx.fillStyle="#151a18";
+      vctx.fillRect(px-size*.22,py-size*.14,size*.44,size*.28);
+      vctx.fillStyle="#bbc56c";
+      vctx.beginPath();
+      vctx.arc(px,py,size*.11,0,Math.PI*2);
+      vctx.fill();
+    }
+
+    vctx.globalAlpha=1;
+    vctx.fillStyle="rgba(245,58,44,.92)";
+    vctx.beginPath();
+    vctx.arc(px-size*.075,py-size*.10,Math.max(3,size*.03),0,Math.PI*2);
+    vctx.arc(px+size*.075,py-size*.10,Math.max(3,size*.03),0,Math.PI*2);
+    vctx.fill();
+  }
+
+  vctx.globalAlpha=1;
   requestAnimationFrame(drawVentInspection);
 }
-
 function refreshVentPanel(){
   if(!selectedVentId)return;
 
@@ -2407,33 +2482,123 @@ function drawExpedition(){
   exctx.lineWidth=2;
   exctx.strokeRect(vw/2-15,vh/2-15,30,30);
 
-  // 장착 무기
+  // 탐사 무기: 벙커와 동일한 방향/쿨타임/베기 시스템
   if(equippedWeapon){
+    const cx=vw/2;
+    const cy=vh/2;
+    const fx=expeditionFacing.x||1;
+    const fy=expeditionFacing.y||0;
+    const angle=Math.atan2(fy,fx);
+    const swinging=performance.now()<expeditionSwingUntil;
+
     exctx.save();
-    exctx.translate(vw/2,vh/2);
+    exctx.translate(cx,cy);
+    exctx.rotate(angle+(swinging?.72:0));
 
-    const swinging=performance.now()<swingUntil;
-    exctx.rotate(swinging?1.0:0.25);
-
-    exctx.strokeStyle=
-      equippedWeapon==="axe"
-        ? "#8c9495"
-        : "#6f4b2f";
-
-    exctx.lineWidth=
-      equippedWeapon==="axe" ? 8 : 6;
-
+    exctx.strokeStyle="rgba(0,0,0,.4)";
+    exctx.lineWidth=11;
+    exctx.lineCap="round";
     exctx.beginPath();
-    exctx.moveTo(12,0);
-    exctx.lineTo(58,0);
+    exctx.moveTo(10,3);
+    exctx.lineTo(66,3);
     exctx.stroke();
 
     if(equippedWeapon==="axe"){
-      exctx.fillStyle="#aeb7b8";
-      exctx.fillRect(47,-13,22,26);
+      const handle=exctx.createLinearGradient(8,0,68,0);
+      handle.addColorStop(0,"#4a2918");
+      handle.addColorStop(.5,"#8c5b34");
+      handle.addColorStop(1,"#54301c");
+
+      exctx.strokeStyle=handle;
+      exctx.lineWidth=7;
+      exctx.beginPath();
+      exctx.moveTo(10,0);
+      exctx.lineTo(67,0);
+      exctx.stroke();
+
+      const metal=exctx.createLinearGradient(48,-16,80,16);
+      metal.addColorStop(0,"#e1e6e7");
+      metal.addColorStop(.45,"#a6afb1");
+      metal.addColorStop(1,"#596264");
+
+      exctx.fillStyle=metal;
+      exctx.beginPath();
+      exctx.moveTo(49,-16);
+      exctx.lineTo(73,-12);
+      exctx.lineTo(80,0);
+      exctx.lineTo(72,14);
+      exctx.lineTo(50,10);
+      exctx.closePath();
+      exctx.fill();
+
+      exctx.strokeStyle="#4d5557";
+      exctx.lineWidth=2;
+      exctx.stroke();
+    }else{
+      const wood=exctx.createLinearGradient(8,0,74,0);
+      wood.addColorStop(0,"#452616");
+      wood.addColorStop(.3,"#855431");
+      wood.addColorStop(.65,"#a36a3c");
+      wood.addColorStop(1,"#55301b");
+
+      exctx.strokeStyle=wood;
+      exctx.lineWidth=10;
+      exctx.beginPath();
+      exctx.moveTo(10,0);
+      exctx.lineTo(72,0);
+      exctx.stroke();
+
+      exctx.strokeStyle="rgba(246,196,133,.32)";
+      exctx.lineWidth=2;
+      exctx.beginPath();
+      exctx.moveTo(19,-2);
+      exctx.bezierCurveTo(34,-4,50,2,66,-2);
+      exctx.stroke();
+
+      exctx.strokeStyle="rgba(53,25,12,.38)";
+      exctx.beginPath();
+      exctx.moveTo(27,3);
+      exctx.bezierCurveTo(40,5,55,0,69,3);
+      exctx.stroke();
+    }
+
+    if(swinging){
+      const slash=exctx.createLinearGradient(0,-80,86,42);
+      slash.addColorStop(0,"rgba(255,255,255,0)");
+      slash.addColorStop(.45,"rgba(255,252,224,.96)");
+      slash.addColorStop(1,"rgba(255,202,110,0)");
+
+      exctx.strokeStyle=slash;
+      exctx.lineWidth=7;
+      exctx.beginPath();
+      exctx.arc(0,0,83,-.87,.68);
+      exctx.stroke();
+
+      exctx.strokeStyle="rgba(255,205,108,.38)";
+      exctx.lineWidth=14;
+      exctx.beginPath();
+      exctx.arc(0,0,71,-.77,.58);
+      exctx.stroke();
     }
 
     exctx.restore();
+
+    const remaining=Math.max(0,weaponCooldownUntil-performance.now());
+    if(remaining>0&&currentWeaponCooldown>0){
+      const ratio=1-remaining/currentWeaponCooldown;
+
+      exctx.strokeStyle="rgba(0,0,0,.50)";
+      exctx.lineWidth=5;
+      exctx.beginPath();
+      exctx.arc(cx,cy+33,13,0,Math.PI*2);
+      exctx.stroke();
+
+      exctx.strokeStyle="rgba(245,247,235,.94)";
+      exctx.lineWidth=3;
+      exctx.beginPath();
+      exctx.arc(cx,cy+33,13,-Math.PI/2,-Math.PI/2+Math.PI*2*ratio);
+      exctx.stroke();
+    }
   }
 
   // 원형 시야: 원 밖은 완전 검정
@@ -2478,6 +2643,12 @@ function expeditionLoop(){
   }else if(dx&&dy){
     dx*=.707;
     dy*=.707;
+  }
+
+  if(Math.abs(dx)+Math.abs(dy)>.05){
+    const len=Math.hypot(dx,dy)||1;
+    expeditionFacing.x=dx/len;
+    expeditionFacing.y=dy/len;
   }
 
   const nx=expeditionPlayer.x+dx*3.2;
@@ -2545,6 +2716,7 @@ function beginExpeditionFromServer(data){
   (data.mutants||[]).forEach(m=>expeditionMutants[m.id]={...m});
 
   expeditionPlayer={x:250,y:850};
+  expeditionFacing={x:1,y:0};
   expeditionOthers={};
   expeditionRunning=true;
   me.hands=[];
@@ -2608,50 +2780,71 @@ function swingWeapon(){
   }
 
   const now=performance.now();
+  if(now<weaponCooldownUntil)return;
 
-  if(now<weaponCooldownUntil){
-    return;
-  }
-
-  const localCooldown=
+  const cooldown=
     equippedWeapon==="axe" ? 1100 :
     equippedWeapon==="woodenStick" ? 700 :
     800;
 
-  currentWeaponCooldown=localCooldown;
-  weaponCooldownUntil=now+localCooldown;
-  swingUntil=now+300;
-  bunkerSwingUntil=now+300;
+  currentWeaponCooldown=cooldown;
+  weaponCooldownUntil=now+cooldown;
 
-  ioClient.emit("swing-weapon",{
-    roomCode:room?.code,
-    sessionId,
-    nickname:$("nick").value.trim(),
-    facingX:bunkerRunning?bunkerFacing.x:1,
-    facingY:bunkerRunning?bunkerFacing.y:0
-  },r=>{
-    if(r?.cooldown){
-      weaponCooldownUntil=
-        performance.now()+(r.remaining||0);
-      return;
-    }
+  if(bunkerRunning){
+    bunkerSwingUntil=now+320;
 
-    if(r && !r.ok && r.message){
-      toast(r.message);
-    }
-  });
+    ioClient.emit("swing-weapon",{
+      roomCode:room?.code,
+      sessionId,
+      nickname:$("nick").value.trim(),
+      facingX:bunkerFacing.x,
+      facingY:bunkerFacing.y
+    },r=>{
+      if(r?.cooldown){
+        weaponCooldownUntil=performance.now()+(r.remaining||0);
+      }else if(r&&!r.ok&&r.message){
+        toast(r.message);
+      }
+    });
+    return;
+  }
 
-  if(expeditionRunning && mutantNear && mutantNear.alive){
-    const distance=Math.hypot(
-      expeditionPlayer.x+15-(mutantNear.x+18),
-      expeditionPlayer.y+15-(mutantNear.y+18)
-    );
+  if(expeditionRunning){
+    expeditionSwingUntil=now+320;
+    swingUntil=now+320;
 
-    if(distance<=95){
-      ioClient.emit("attack-mutant",{mutantId:mutantNear.id},r=>{
-        if(r?.killed)toast("돌연변이를 처치했습니다.");
-      });
-    }
+    if(!mutantNear||!mutantNear.alive)return;
+
+    const dx=(mutantNear.x+18)-(expeditionPlayer.x+15);
+    const dy=(mutantNear.y+18)-(expeditionPlayer.y+15);
+    const dist=Math.hypot(dx,dy);
+
+    if(dist>95)return;
+
+    const dot=
+      (dx/(dist||1))*expeditionFacing.x+
+      (dy/(dist||1))*expeditionFacing.y;
+
+    if(dot<0.05)return;
+
+    ioClient.emit("attack-mutant",{
+      mutantId:mutantNear.id,
+      facingX:expeditionFacing.x,
+      facingY:expeditionFacing.y
+    },r=>{
+      if(r?.cooldown){
+        weaponCooldownUntil=performance.now()+(r.remaining||0);
+        return;
+      }
+
+      if(!r?.ok){
+        if(r?.message)toast(r.message);
+        return;
+      }
+
+      if(r.cooldown)currentWeaponCooldown=r.cooldown;
+      if(r.killed)toast("돌연변이를 처치했습니다.");
+    });
   }
 }
 
