@@ -113,6 +113,12 @@
   <div class="status-meter"><i id="thirstBar"></i></div>
   <div class="stat-row"><span>Hygiene</span><b id="hygieneValue">100%</b></div>
   <div class="status-meter"><i id="hygieneBar"></i></div>
+
+  <div class="stat-row"><span>Fatigue</span><b id="fatigueValue">0%</b></div>
+  <div class="status-meter"><i id="fatigueBar"></i></div>
+
+  <div class="stat-row"><span>Sanity</span><b id="sanityStatValue">100%</b></div>
+  <div class="status-meter"><i id="sanityStatBar"></i></div>
   <div>Status <b id="conditionValue">안정</b></div>
   <div>Day <b id="statusDay">1</b></div>
 </div>
@@ -200,6 +206,23 @@
       <button data-tab="shop">SANITY SHOP</button>
     </div>
     <div id="computerContent" class="computer-content"></div>
+  </div>
+
+  <div id="ventPanel" class="vent-panel hidden">
+    <div class="message-head">
+      <strong id="ventPanelTitle">VENT</strong>
+      <button id="ventPanelClose" type="button">×</button>
+    </div>
+    <div id="ventThreatText">위협 없음</div>
+    <div class="vent-actions">
+      <button id="ventToggle" type="button">벤트 닫기</button>
+      <button id="ventSpray" type="button">🧴 스프레이</button>
+      <button id="ventTrap" type="button">🪤 쥐덫</button>
+    </div>
+  </div>
+
+  <div id="hallucinationOverlay" class="hallucination-overlay hidden">
+    <div class="hallucination-face">◉</div>
   </div>
 
   <div id="weaponPanel" class="weapon-panel hidden">
