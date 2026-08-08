@@ -293,6 +293,14 @@ function publicPartiesForLobby(lobbyId){
     .map(r=>({code:r.code,name:r.name,playerCount:r.players.size,maxPlayers:r.maxPlayers}));
 }
 
+function emitPublicParties(lobbyId){
+  if(!lobbyId)return;
+  io.to(`public-lobby-${lobbyId}`).emit(
+    "public-party-list",
+    publicPartiesForLobby(lobbyId)
+  );
+}
+
 
 function resolveRoomPlayer(socket,data={}){
   let room=rooms.get(socketRoom.get(socket.id));
@@ -422,7 +430,7 @@ io.on("connection",s=>{
     expeditionInvite:null,
     expeditionItems:[]
   };
-  rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id});emit(r);emitPublicParties(originLobbyId)
+  rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id});emit(r)
  });
  s.on("join-room",(d,cb=()=>{})=>{
   const requestedLobby=parseInt(d?.publicLobbyId)||null;
