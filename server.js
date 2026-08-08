@@ -286,7 +286,18 @@ function reconnectRoom(socket,sessionId,cb=()=>{}){
   cb({ok:false});
 }
 
+
+function publicPartiesForLobby(lobbyId){
+  return [...rooms.values()]
+    .filter(r=>r.publicLobbyId===lobbyId && r.status==="waiting" && !r.private)
+    .map(r=>({code:r.code,name:r.name,playerCount:r.players.size,maxPlayers:r.maxPlayers}));
+}
+
 io.on("connection",s=>{
+ s.on("get-public-party-list",(lobbyId,cb=()=>{})=>{
+  const id=Math.max(1,Math.min(10,parseInt(lobbyId)||1));
+  cb({ok:true,parties:publicPartiesForLobby(id)});
+ });
  s.on("reconnect-room",(sessionId,cb=()=>{})=>reconnectRoom(s,String(sessionId||""),cb));
 
  s.emit("public-lobby-list",lobbyList());
@@ -357,6 +368,8 @@ io.on("connection",s=>{
   if(!p.nickname||!String(d.roomName||"").trim())return cb({ok:false,message:"입력 확인"});
   const r={
     code:c,
+    publicLobbyId:parseInt(d?.publicLobbyId)||null,
+    private:Boolean(d?.private),
     name:String(d.roomName).trim().slice(0,24),
     maxPlayers:Math.max(1,Math.min(8,+d.maxPlayers||4)),
     hostId:s.id,
@@ -381,7 +394,15 @@ io.on("connection",s=>{
   rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id});emit(r)
  });
  s.on("join-room",(d,cb=()=>{})=>{
-  leavePublicLobby(s);const r=rooms.get(String(d.code||"").toUpperCase());if(!r)return cb({ok:false,message:"방 없음"});join(s,r,d.nickname,cb,d.color,d.sessionId)});
+  const requestedLobby=parseInt(d?.publicLobbyId)||null;
+  leavePublicLobby(s);
+  const r=rooms.get(String(d.code||"").toUpperCase());
+  if(!r)return cb({ok:false,message:"방 없음"});
+  if(requestedLobby && r.publicLobbyId && r.publicLobbyId!==requestedLobby){
+    return cb({ok:false,message:"현재 로비의 파티가 아닙니다."});
+  }
+  join(s,r,d.nickname,cb,d.color,d.sessionId)
+ });
  s.on("toggle-ready",(cb=()=>{})=>{const r=rooms.get(socketRoom.get(s.id));if(!r)return cb({ok:false});if(r.hostId===s.id)return cb({ok:false});const p=r.players.get(s.id);p.ready=!p.ready;cb({ok:true});emit(r)});
  s.on("start-game",(cb=()=>{})=>{
   const r=rooms.get(socketRoom.get(s.id));if(!r)return cb({ok:false,message:"방 없음"});if(r.hostId!==s.id)return cb({ok:false,message:"방장만 가능"});
