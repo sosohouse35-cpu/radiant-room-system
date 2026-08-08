@@ -143,15 +143,45 @@ $("partyCreateConfirm").onclick=()=>{
 function joined(r){
   if(!r?.ok)return toast(r?.message||"입장 실패");
 
-  publicLobbyRunning=false;
   room=r.room;
   myId=r.myId;
 
-  renderLobby();
-  show("lobby");
+  if(currentPublicLobby && room.publicLobbyId===currentPublicLobby){
+    publicLobbyRunning=true;
+    show("publicLobby");
+    renderPartyOverlay();
+    $("partyRoomOverlay").classList.remove("hidden");
+  }else{
+    publicLobbyRunning=false;
+    renderLobby();
+    show("lobby");
+  }
 
-  if($("dlg").open)$("dlg").close();
+  if($("dlg")?.open)$("dlg").close();
 }
+
+function renderPartyOverlay(){
+  if(!room)return;
+  $("partyOverlayName").textContent=room.name;
+  $("partyOverlayCode").textContent=`PARTY ${room.code}`;
+  $("partyOverlayPlayers").innerHTML=room.players.map(p=>
+    `<div><span style="display:inline-block;width:12px;height:12px;background:${p.color};margin-right:6px"></span>${p.nickname}${p.id===room.hostId?" (방장)":""} ${p.ready?"✓":""}</div>`
+  ).join("");
+  $("partyOverlayStart").style.display=myId===room.hostId?"inline-block":"none";
+  $("partyOverlayReady").style.display=myId===room.hostId?"none":"inline-block";
+}
+
+$("partyOverlayReady").onclick=()=>ioClient.emit("toggle-ready",r=>{if(!r?.ok)toast(r?.message||"준비 변경 실패")});
+$("partyOverlayStart").onclick=()=>ioClient.emit("start-game",r=>{if(!r?.ok)toast(r?.message||"시작 실패")});
+$("partyOverlayLeave").onclick=()=>{
+  ioClient.emit("leave-room",()=>{
+    room=null;
+    publicLobbyRunning=true;
+    show("publicLobby");
+    $("partyRoomOverlay").classList.add("hidden");
+    ioClient.emit("get-public-party-list",currentPublicLobby,r=>{if(r?.ok)renderPartyList(r.parties||[])});
+  });
+};
 
 function renderLobby(){
   if(!room)return;
@@ -177,7 +207,11 @@ $("start").onclick=()=>ioClient.emit("start-game",r=>{
 
 ioClient.on("room-updated",r=>{
   room=r;
-  renderLobby();
+  if(currentPublicLobby && r.publicLobbyId===currentPublicLobby){
+    renderPartyOverlay();
+  }else{
+    renderLobby();
+  }
 
   if(typeof bunkerOthers!=="undefined"){
     const activeIds=new Set(r.players.map(p=>p.id));
@@ -1444,7 +1478,12 @@ $("computerContent").onclick=e=>{
 };
 
 function consumeBunker(type){
-  ioClient.emit("consume-bunker-item",type,r=>{
+  ioClient.emit("consume-bunker-item",{
+    type,
+    roomCode:room?.code,
+    sessionId,
+    nickname:$("nick").value.trim()
+  },r=>{
     if(!r.ok){
       toast(r.message);
       return;
@@ -1543,8 +1582,22 @@ addEventListener("keyup",e=>{
   if(bunkerRunning)bunkerKeys.delete(e.key.toLowerCase());
 });
 
+function updateMobileActionVisibility(scene){
+  const pick=$("mPick"),store=$("mStore"),stairBtn=$("mStair"),swing=$("mSwing"),hands=document.querySelector(".hands");
+  if(!pick||!store||!stairBtn)return;
+  if(hands)hands.style.display=scene==="bunker"?"none":"block";
+  if(scene==="bunker"){
+    pick.style.display="none"; store.style.display="none"; stairBtn.style.display="none"; if(swing)swing.style.display="none";
+  }else if(scene==="expedition"){
+    pick.style.display="inline-block"; pick.textContent="줍기"; store.style.display="none"; stairBtn.style.display="none"; if(swing)swing.style.display=equippedWeapon?"inline-block":"none";
+  }else{
+    pick.style.display="inline-block"; pick.textContent="줍기"; store.style.display="inline-block"; stairBtn.style.display="inline-block"; if(swing)swing.style.display="none";
+  }
+}
+
 function enterBunkerScene(){
   document.body.classList.remove("chat-open");
+  updateMobileActionVisibility("bunker");
   $("bunkerUI").classList.remove("hidden");
   $("fadeOverlay").classList.remove("hidden");
   resizeBunkerCanvas();
@@ -2021,6 +2074,7 @@ function beginExpeditionFromServer(data){
   expeditionOthers={};
   expeditionRunning=true;
   me.hands=[];
+  updateMobileActionVisibility("expedition");
 
   $("expeditionUI").classList.remove("hidden");
   $("expeditionDay").textContent=`DAY ${day}`;
@@ -2359,6 +2413,8 @@ if(window.visualViewport){
 }
 
 ioClient.on("game-started",d=>{show("game");
+$("partyRoomOverlay")?.classList.add("hidden");
+updateMobileActionVisibility("scavenge");
 $("bookButton").classList.add("hidden");
 $("messageButton").classList.add("hidden");
 $("statusPanel").classList.add("hidden");
@@ -2386,4 +2442,32 @@ if(mine){
 updateStatusUI();$("timer").textContent="60";renderSlots();running=true;last=performance.now();requestAnimationFrame(loop)});
 ioClient.on("player-moved",d=>{if(players[d.id])Object.assign(players[d.id],d)});ioClient.on("item-taken",d=>{let i=items.find(x=>x.id===d.itemId);if(i)i.taken=true;if(d.playerId===myId){me.hands=d.hands;renderSlots()}});ioClient.on("items-deposited",d=>{if(d.playerId===myId){me.hands=d.hands;me.stored=d.stored;renderSlots()}});
 
-$("globalFullscreen").onclick=async()=>{try{if(!document.fullscreenElement){await document.documentElement.requestFullscreen?.();if(screen.orientation?.lock){try{await screen.orientation.lock("landscape")}catch{}}}else{await document.exitFullscreen?.();}}catch{toast("전체화면을 사용할 수 없습니다.");}};
+$("globalFullscreen").onclick=async()=>{
+  const btn=$("globalFullscreen");
+  try{
+    if(document.fullscreenElement){
+      if(document.exitFullscreen)await document.exitFullscreen();
+      btn.textContent="⛶";
+      return;
+    }
+    const el=document.documentElement;
+    const request=el.requestFullscreen||el.webkitRequestFullscreen;
+    if(request){
+      await request.call(el);
+      btn.textContent="×";
+      return;
+    }
+    // iPhone Safari fallback: browser fullscreen API가 없으면 최대 화면 모드
+    document.body.classList.toggle("pseudo-fullscreen");
+    window.scrollTo(0,1);
+    btn.textContent=document.body.classList.contains("pseudo-fullscreen")?"×":"⛶";
+  }catch(e){
+    document.body.classList.toggle("pseudo-fullscreen");
+    window.scrollTo(0,1);
+  }
+};
+
+document.addEventListener("fullscreenchange",()=>{
+  const b=$("globalFullscreen");
+  if(b)b.textContent=document.fullscreenElement?"×":"⛶";
+});
