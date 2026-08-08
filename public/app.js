@@ -2040,6 +2040,12 @@ if(window.visualViewport){
 }
 
 function interactBunker(){
+  // v19: 환풍구는 무조건 전용 내부 화면으로 진입
+  if(bunkerNear && ["ventTop","ventLeft","ventBottom"].includes(bunkerNear.id)){
+    openVentPanel(bunkerNear.id);
+    return;
+  }
+
   if(!bunkerNear)return;
 
   if(bunkerNear.id==="computer"){
@@ -2091,10 +2097,7 @@ function interactBunker(){
     return;
   }
 
-  if(["ventTop","ventLeft","ventBottom"].includes(bunkerNear.id)){
-    toast(`${bunkerNear.label}: 정상 작동 중`);
-    return;
-  }
+  
 
   toast(`${bunkerNear.label}`);
 }
