@@ -103,7 +103,7 @@ function join(s,r,name,cb,preferredColor,preferredSessionId){
  const color=(requested&&!used.has(requested))
    ? requested
    : (COLORS.find(c=>!used.has(c))||pick(COLORS));
- const p={id:s.id,nickname:name,sessionId:String(preferredSessionId||""),ready:false,color,floor:1,x:1180,y:980,hands:[],stored:[],bunkerX:330,bunkerY:560,inBunker:false,hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,equipped:null,facingX:1,facingY:0,lastWeaponSwingAt:0,nextHallucinationAt:0,inExpedition:false,expeditionX:260,expeditionY:900};
+ const p={id:s.id,nickname:name,sessionId:String(preferredSessionId||""),ready:false,color,floor:1,x:1180,y:980,hands:[],stored:[],bunkerX:330,bunkerY:560,inBunker:false,hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,equipped:null,facingX:1,facingY:0,lastWeaponSwingAt:0,nextHallucinationAt:0,sick:false,inExpedition:false,expeditionX:260,expeditionY:900};
  r.players.set(s.id,p);socketRoom.set(s.id,r.code);s.join(r.code);cb({ok:true,room:view(r),myId:s.id});emit(r)
 }
 
@@ -470,6 +470,61 @@ function failVentThreat(room,vent){
   clearVentThreat(room,vent);
 }
 
+
+const HOSPITAL_POINTS=[
+  {x:170,y:150},{x:335,y:145},{x:520,y:150},{x:720,y:150},{x:940,y:145},
+  {x:190,y:320},{x:390,y:315},{x:615,y:320},{x:835,y:315},{x:1030,y:320},
+  {x:165,y:515},{x:355,y:510},{x:560,y:510},{x:760,y:515},{x:980,y:510},
+  {x:190,y:710},{x:390,y:710},{x:595,y:710},{x:810,y:710},{x:1010,y:710}
+];
+
+const HOSPITAL_GLASS=[
+  {x:330,y:430,r:34},
+  {x:760,y:250,r:30},
+  {x:925,y:625,r:34}
+];
+
+const HOSPITAL_TRIPWIRES=[
+  {x1:490,y1:390,x2:610,y2:390},
+  {x1:760,y1:585,x2:880,y2:585}
+];
+
+function makeHospitalItems(){
+  const points=shuffle(HOSPITAL_POINTS);
+  const types=[
+    "medkit","medkit","medkit","medkit","medkit","medkit","medkit","medkit",
+    "water","water","water","water",
+    "beans","beans","beans"
+  ];
+
+  return types.map((type,i)=>({
+    id:`h-${Date.now()}-${i}-${Math.random().toString(36).slice(2,6)}`,
+    type,
+    slots:DEFS[type]?.slots||1,
+    x:points[i].x,
+    y:points[i].y,
+    taken:false
+  }));
+}
+
+function makeHospitalAbomination(){
+  return {
+    id:`hospital-abomination-${Date.now()}`,
+    x:930,
+    y:180,
+    targetX:null,
+    targetY:null,
+    alertedUntil:0,
+    lingerUntil:0,
+    lastAttackAt:0
+  };
+}
+
+function expeditionReturnPoint(room){
+  return room.expeditionLocation==="hospital"
+    ? {x:115,y:835}
+    : {x:250,y:850};
+}
 io.on("connection",s=>{
  s.on("get-public-party-list",(lobbyId,cb=()=>{})=>{
   const id=Math.max(1,Math.min(10,parseInt(lobbyId)||1));
@@ -550,7 +605,7 @@ io.on("connection",s=>{
     floor:1,x:1180,y:980,hands:[],stored:[],
     bunkerX:330,bunkerY:560,inBunker:false,
     hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,
-    equipped:null,facingX:1,facingY:0,lastWeaponSwingAt:0,nextHallucinationAt:0,
+    equipped:null,facingX:1,facingY:0,lastWeaponSwingAt:0,nextHallucinationAt:0,sick:false,
     inExpedition:false,expeditionX:260,expeditionY:900
   };
   if(!p.nickname||!String(d.roomName||"").trim())return cb({ok:false,message:"입력 확인"});
@@ -577,6 +632,8 @@ io.on("connection",s=>{
     dayStartedAt:Date.now(),
     expeditionCooldownUntil:0,
     expeditionInvite:null,
+    expeditionLocation:"grocery",
+    hospitalAbomination:null,
     expeditionItems:[],
     vents:[
       {id:"ventTop",closed:false,threat:null,stage:0,nextStageAt:0},
@@ -730,6 +787,8 @@ io.on("connection",s=>{
     dayStartedAt:Date.now(),
     expeditionCooldownUntil:0,
     expeditionInvite:null,
+    expeditionLocation:"grocery",
+    hospitalAbomination:null,
     expeditionItems:[],
     vents:[
       {id:"ventTop",closed:false,threat:null,stage:0,nextStageAt:0},
@@ -780,7 +839,7 @@ io.on("connection",s=>{
 
 
 
- s.on("request-expedition",(cb=()=>{})=>{
+ s.on("request-expedition",(payload={},cb=()=>{})=>{
   const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
   if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
   if(!p.inBunker)return cb({ok:false,message:"벙커 안에서만 탐사를 시작할 수 있습니다."});
@@ -794,20 +853,31 @@ io.on("connection",s=>{
     return cb({ok:false,message:"이미 탐사 모집이 진행 중입니다."});
   }
 
+  const hasMap=(r.bunkerStock.map||0)>0;
+  let location=String(payload?.location||"");
+
+  if(hasMap){
+    if(!["grocery","hospital"].includes(location))location="grocery";
+  }else{
+    location=pick(["grocery","hospital"]);
+  }
+
   r.expeditionInvite={
     leaderId:s.id,
     participants:new Set([s.id]),
     declined:new Set(),
-    endsAt:now+EXPEDITION_INVITE_MS
+    endsAt:now+EXPEDITION_INVITE_MS,
+    location
   };
 
   io.to(r.code).emit("expedition-invite",{
     leaderId:s.id,
     leaderName:p.nickname,
-    endsAt:r.expeditionInvite.endsAt
+    endsAt:r.expeditionInvite.endsAt,
+    location
   });
 
-  cb({ok:true});
+  cb({ok:true,location,random:!hasMap});
 
   setTimeout(()=>{
     const room=rooms.get(r.code);
@@ -815,8 +885,27 @@ io.on("connection",s=>{
     if(room.expeditionInvite.leaderId!==s.id)return;
 
     const participants=[...room.expeditionInvite.participants];
-    room.expeditionItems=makeGroceryItems();
-    room.expeditionMutants=makeMutants();
+    const location=room.expeditionInvite.location||"grocery";
+
+    room.expeditionLocation=location;
+    room.expeditionItems=
+      location==="hospital"
+        ? makeHospitalItems()
+        : makeGroceryItems();
+
+    room.expeditionMutants=
+      location==="hospital"
+        ? []
+        : makeMutants();
+
+    room.hospitalAbomination=
+      location==="hospital"
+        ? makeHospitalAbomination()
+        : null;
+
+    const returnPoint=expeditionReturnPoint(room);
+    const handLimit=(room.bunkerStock.backpack||0)>0 ? 8 : 4;
+    const hasGasMask=(room.bunkerStock.mask||0)>0;
 
     participants.forEach((id,index)=>{
       const player=room.players.get(id);
@@ -824,9 +913,10 @@ io.on("connection",s=>{
 
       player.inBunker=false;
       player.inExpedition=true;
-      player.expeditionX=250+(index%3)*42;
-      player.expeditionY=850+Math.floor(index/3)*42;
+      player.expeditionX=returnPoint.x+(index%3)*38;
+      player.expeditionY=returnPoint.y+Math.floor(index/3)*38;
       player.hands=[];
+      player.sick=!hasGasMask;
     });
 
     room.expeditionCooldownUntil=Date.now()+EXPEDITION_COOLDOWN_MS;
@@ -834,8 +924,15 @@ io.on("connection",s=>{
 
     io.to(room.code).emit("expedition-started",{
       participantIds:participants,
+      location,
       items:room.expeditionItems,
       mutants:room.expeditionMutants,
+      hospitalAbomination:room.hospitalAbomination,
+      hospitalGlass:location==="hospital"?HOSPITAL_GLASS:[],
+      hospitalTripwires:location==="hospital"?HOSPITAL_TRIPWIRES:[],
+      returnPoint,
+      handLimit,
+      hasGasMask,
       cooldownUntil:room.expeditionCooldownUntil
     });
   },EXPEDITION_INVITE_MS);
@@ -870,11 +967,58 @@ io.on("connection",s=>{
   const x=Number(d?.x),y=Number(d?.y);
   if(!Number.isFinite(x)||!Number.isFinite(y))return;
 
+  const prevX=p.expeditionX,prevY=p.expeditionY;
+
   p.expeditionX=Math.max(35,Math.min(1165,x));
   p.expeditionY=Math.max(35,Math.min(925,y));
 
+  const fx=Number(d?.facingX),fy=Number(d?.facingY);
+  if(Number.isFinite(fx)&&Number.isFinite(fy)&&(Math.abs(fx)+Math.abs(fy)>.05)){
+    const len=Math.hypot(fx,fy)||1;
+    p.facingX=fx/len;
+    p.facingY=fy/len;
+  }
+
+  // Hospital Abomination은 시각이 아니라 소리를 따라감.
+  if(r.expeditionLocation==="hospital" && r.hospitalAbomination){
+    const moved=Math.hypot(p.expeditionX-prevX,p.expeditionY-prevY);
+
+    if(moved>1.2){
+      const a=r.hospitalAbomination;
+      const distance=Math.hypot(
+        (p.expeditionX+15)-(a.x+18),
+        (p.expeditionY+15)-(a.y+18)
+      );
+
+      // 가까운 곳에서 움직이면 소리를 들음.
+      if(distance<330){
+        a.targetX=p.expeditionX;
+        a.targetY=p.expeditionY;
+        a.alertedUntil=Date.now()+3500;
+      }
+    }
+
+    for(const g of HOSPITAL_GLASS){
+      if(Math.hypot((p.expeditionX+15)-g.x,(p.expeditionY+15)-g.y)<30){
+        r.hospitalAbomination.targetX=p.expeditionX;
+        r.hospitalAbomination.targetY=p.expeditionY;
+        r.hospitalAbomination.alertedUntil=Date.now()+5000;
+      }
+    }
+
+    for(const w of HOSPITAL_TRIPWIRES){
+      const cx=(w.x1+w.x2)/2,cy=(w.y1+w.y2)/2;
+      if(Math.hypot((p.expeditionX+15)-cx,(p.expeditionY+15)-cy)<35){
+        r.hospitalAbomination.targetX=p.expeditionX;
+        r.hospitalAbomination.targetY=p.expeditionY;
+        r.hospitalAbomination.alertedUntil=Date.now()+6000;
+      }
+    }
+  }
+
   s.to(r.code).emit("expedition-player-moved",{
     id:p.id,x:p.expeditionX,y:p.expeditionY,
+    facingX:p.facingX,facingY:p.facingY,
     nickname:p.nickname,color:p.color
   });
  });
@@ -888,7 +1032,10 @@ io.on("connection",s=>{
 
   const used=p.hands.reduce((sum,type)=>sum+(DEFS[type]?.slots||1),0);
   const need=DEFS[item.type]?.slots||1;
-  if(used+need>LIMIT)return cb({ok:false,message:`손 공간 부족 (${need}칸 필요)`});
+  const expeditionLimit=(r.bunkerStock.backpack||0)>0 ? 8 : 4;
+  if(used+need>expeditionLimit){
+    return cb({ok:false,message:`손 공간 부족 (${need}칸 필요 · ${expeditionLimit}칸)`});
+  }
 
   if(Math.hypot((p.expeditionX+15)-item.x,(p.expeditionY+15)-item.y)>85){
     return cb({ok:false,message:"아이템과 너무 멉니다."});
@@ -946,7 +1093,14 @@ io.on("connection",s=>{
     (p.expeditionY+15)-(mutant.y+18)
   );
 
-  if(distance>95)return cb({ok:false,message:"돌연변이가 너무 멉니다."});
+  if(distance>125)return cb({ok:false,message:"공격 범위 밖입니다."});
+
+  const dx=(mutant.x+18)-(p.expeditionX+15);
+  const dy=(mutant.y+18)-(p.expeditionY+15);
+  const len=Math.hypot(dx,dy)||1;
+  const dot=(dx/len)*(p.facingX||1)+(dy/len)*(p.facingY||0);
+
+  if(dot<-0.18)return cb({ok:false,message:"공격 방향 밖입니다."});
 
   const damage=p.equipped==="axe" ? 45 : 24;
   mutant.hp=Math.max(0,mutant.hp-damage);
@@ -1023,6 +1177,16 @@ io.on("connection",s=>{
 
   if(!r||!p||!p.inExpedition)return cb({ok:false,message:"탐사 상태를 찾을 수 없습니다."});
 
+  const returnPoint=expeditionReturnPoint(r);
+  const returnDistance=Math.hypot(
+    (p.expeditionX+15)-returnPoint.x,
+    (p.expeditionY+15)-returnPoint.y
+  );
+
+  if(returnDistance>95){
+    return cb({ok:false,message:"탐사 시작 지점으로 돌아가야 합니다."});
+  }
+
   for(const type of p.hands){
     r.bunkerStock[type]=(r.bunkerStock[type]||0)+1;
     if(type==="axe")r.weapons.axe=(r.weapons.axe||0)+1;
@@ -1043,7 +1207,7 @@ io.on("connection",s=>{
     day:r.day,
     bunkerStock:r.bunkerStock,
     weapons:r.weapons,
-    stats:{hp:p.hp,hunger:p.hunger,thirst:p.thirst,hygiene:p.hygiene},
+    stats:{hp:p.hp,hunger:p.hunger,thirst:p.thirst,hygiene:p.hygiene,sick:p.sick},
     player:{x:p.bunkerX,y:p.bunkerY}
   });
  });
@@ -1122,11 +1286,8 @@ io.on("connection",s=>{
   if(action==="toggle"){
     vent.closed=!vent.closed;
 
-    // 벤트를 닫으면 어떤 위협이든 막을 수 있음
-    if(vent.closed && vent.threat){
-      clearVentThreat(r,vent);
-    }
-
+    // 위협이 있을 때 닫아도 즉시 사라지지 않는다.
+    // 다음 단계 전환 시점에 차단 성공으로 처리한다.
     io.to(r.code).emit("vent-state",{
       vents:ventPublicState(r),
       nextVentEventAt:r.nextVentEventAt
@@ -1217,7 +1378,7 @@ io.on("connection",s=>{
   const damage=p.equipped==="axe"?45:24;
 
   if(p.inBunker){
-    let best=null,bestDist=95;
+    let best=null,bestDist=125;
 
     for(const mob of r.bunkerMobs||[]){
       if(!mob.alive)continue;
@@ -1229,7 +1390,7 @@ io.on("connection",s=>{
       if(dist<=0||dist>bestDist)continue;
 
       const dot=(dx/dist)*(p.facingX||1)+(dy/dist)*(p.facingY||0);
-      if(dot<0.10)continue;
+      if(dot<-0.18)continue;
 
       best=mob;
       bestDist=dist;
@@ -1279,7 +1440,10 @@ io.on("connection",s=>{
   if(type==="water")p.thirst=Math.min(100,(p.thirst??100)+70);
   if(type==="beans")p.hunger=Math.min(100,(p.hunger??100)+50);
   if(type==="medkit")p.hp=100;
-  if(type==="soap")p.hygiene=100;
+  if(type==="soap"){
+    p.hygiene=100;
+    p.sick=false;
+  }
 
   io.to(r.code).emit("bunker-state",{
     day:r.day,
@@ -1296,7 +1460,7 @@ io.on("connection",s=>{
     ok:true,
     type,
     bunkerStock:r.bunkerStock,
-    stats:{hp:p.hp,hunger:p.hunger,thirst:p.thirst,hygiene:p.hygiene}
+    stats:{hp:p.hp,hunger:p.hunger,thirst:p.thirst,hygiene:p.hygiene,sick:p.sick}
   });
  });
 
@@ -1477,7 +1641,9 @@ setInterval(()=>{
       if(!vent.threat)continue;
 
       if(vent.closed){
-        clearVentThreat(r,vent);
+        if(now>=vent.nextStageAt){
+          clearVentThreat(r,vent);
+        }
         continue;
       }
 
@@ -1566,6 +1732,91 @@ setInterval(()=>{
     r.bunkerMobs=r.bunkerMobs.filter(m=>m.alive);
   }
 },150);
+
+
+// =========================================================
+// 탐사 sickness 지속 피해
+// =========================================================
+setInterval(()=>{
+  for(const r of rooms.values()){
+    for(const p of r.players.values()){
+      if(!p.inExpedition || !p.sick || (p.hp??0)<=0)continue;
+
+      p.hp=Math.max(0,(p.hp??100)-3);
+
+      io.to(r.code).emit("explorer-damaged",{
+        playerId:p.id,
+        hp:p.hp,
+        damage:3,
+        reason:"sickness"
+      });
+    }
+  }
+},5000);
+
+// =========================================================
+// Hospital Abomination AI
+// =========================================================
+setInterval(()=>{
+  const now=Date.now();
+
+  for(const r of rooms.values()){
+    if(r.expeditionLocation!=="hospital")continue;
+    const a=r.hospitalAbomination;
+    if(!a)continue;
+
+    const explorers=[...r.players.values()]
+      .filter(p=>p.inExpedition&&(p.hp??0)>0);
+
+    if(!explorers.length)continue;
+
+    if(a.targetX!=null && now<=a.alertedUntil){
+      const dx=a.targetX-a.x;
+      const dy=a.targetY-a.y;
+      const dist=Math.hypot(dx,dy);
+
+      if(dist>12){
+        // 소리를 들으면 매우 빠르게 돌진
+        const speed=18;
+        a.x+=dx/(dist||1)*speed;
+        a.y+=dy/(dist||1)*speed;
+      }else{
+        a.lingerUntil=now+2200;
+      }
+    }else if(now>a.lingerUntil){
+      // 경계가 풀리면 천천히 배회
+      a.x+=Math.sin(now/1600)*1.1;
+      a.y+=Math.cos(now/1900)*.8;
+      a.x=Math.max(80,Math.min(1100,a.x));
+      a.y=Math.max(80,Math.min(860,a.y));
+    }
+
+    for(const p of explorers){
+      const dist=Math.hypot(
+        (p.expeditionX+15)-(a.x+18),
+        (p.expeditionY+15)-(a.y+18)
+      );
+
+      if(dist<48 && now-a.lastAttackAt>=850){
+        a.lastAttackAt=now;
+        p.hp=Math.max(0,(p.hp??100)-40);
+
+        io.to(r.code).emit("explorer-damaged",{
+          playerId:p.id,
+          hp:p.hp,
+          damage:40,
+          reason:"hospitalAbomination"
+        });
+      }
+    }
+
+    io.to(r.code).emit("hospital-abomination-moved",{
+      x:a.x,
+      y:a.y,
+      alerted:a.targetX!=null&&now<=a.alertedUntil
+    });
+  }
+},120);
 
 // =========================================================
 // 탐사 돌연변이 AI
