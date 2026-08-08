@@ -646,3 +646,84 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;touch-
   padding:7px 0;
   border-bottom:1px solid rgba(255,255,255,.09);
 }
+
+/* v12 public lobby / bunker */
+#bunkerCanvas{background:#000!important}
+
+.public-lobby-screen{
+  position:fixed!important;inset:0;z-index:15;background:#151b16
+}
+#publicLobbyCanvas{width:100vw;height:100dvh;display:block}
+.public-lobby-top{
+  position:fixed;top:calc(10px + env(safe-area-inset-top));
+  left:calc(10px + env(safe-area-inset-left));z-index:25;
+  display:flex;gap:10px;align-items:center;
+  padding:8px 10px;background:rgba(20,25,20,.94);border:1px solid #596354
+}
+.public-lobby-actions{
+  position:fixed;top:calc(10px + env(safe-area-inset-top));
+  right:calc(10px + env(safe-area-inset-right));z-index:25;
+  display:flex;gap:5px;padding:6px;background:rgba(20,25,20,.94)
+}
+.public-lobby-actions input{width:110px;margin:0}
+.public-lobby-actions button{margin:0}
+.public-chat-button{
+  position:fixed;right:calc(12px + env(safe-area-inset-right));
+  bottom:calc(12px + env(safe-area-inset-bottom));z-index:28;
+  width:48px;min-height:48px;padding:0;font-size:22px
+}
+.public-chat-panel{
+  position:fixed;right:calc(12px + env(safe-area-inset-right));
+  bottom:calc(68px + env(safe-area-inset-bottom));z-index:32;
+  width:min(370px,calc(100vw - 24px));height:min(470px,70dvh);
+  display:flex;flex-direction:column;background:#131713;color:#eee;
+  border:1px solid #606b5a;padding:10px
+}
+.public-chat-panel.hidden{display:none!important}
+.public-lobby-list{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.public-lobby-card{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:9px;border:1px solid #485247;background:#121611
+}
+.color-picker{display:grid;grid-template-columns:repeat(4,44px);gap:8px}
+.color-picker button{
+  width:44px;height:44px;min-height:44px;padding:0;border:3px solid transparent
+}
+.color-picker button.selected{border-color:#fff}
+
+.expedition-invite-panel{
+  position:fixed;left:50%;top:calc(20px + env(safe-area-inset-top));
+  transform:translateX(-50%);z-index:175;
+  width:min(380px,calc(100vw - 24px));padding:16px;text-align:center;
+  background:rgba(20,22,18,.98);color:#eee;border:2px solid #d6f055;
+  box-shadow:0 10px 35px rgba(0,0,0,.45)
+}
+.expedition-invite-panel strong{
+  display:block;font-size:34px;color:#d6f055;margin:8px
+}
+
+@media(orientation:landscape) and (max-height:520px){
+  .public-lobby-actions{
+    top:auto;bottom:calc(8px + env(safe-area-inset-bottom));
+    right:calc(8px + env(safe-area-inset-right))
+  }
+  .public-chat-panel{
+    inset:0!important;width:100vw!important;height:100dvh!important;
+    max-height:none!important;padding:
+      calc(8px + env(safe-area-inset-top))
+      calc(8px + env(safe-area-inset-right))
+      calc(8px + env(safe-area-inset-bottom))
+      calc(8px + env(safe-area-inset-left))!important
+  }
+}
+
+.public-lobby-mobile{
+  display:none;
+  position:fixed;
+  left:calc(12px + env(safe-area-inset-left));
+  bottom:calc(12px + env(safe-area-inset-bottom));
+  z-index:29;
+}
+@media(max-width:760px),(hover:none) and (pointer:coarse){
+  .public-lobby-mobile{display:block}
+}
