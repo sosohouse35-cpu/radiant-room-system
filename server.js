@@ -739,7 +739,8 @@ io.on("connection",s=>{
   if([...r.players.values()].some(p=>p.id!==r.hostId&&!p.ready))return cb({ok:false,message:"준비 필요"});
   r.status="playing";r.items=makeItems();r.endsAt=Date.now()+ROUND;
   let k=0;for(const p of r.players.values()){p.floor=1;p.x=1160+(k%3)*45;p.y=970+Math.floor(k/3)*45;p.hands=[];p.stored=[];p.inBunker=false;p.bunkerX=330+(k%3)*38;p.bunkerY=560+Math.floor(k/3)*38;k++}
-  cb({ok:true});io.to(r.code).emit("game-started",{
+  cb({ok:true});console.log("[GAME START]",r.code,"players:",r.players.size);
+  io.to(r.code).emit("game-started",{
     endsAt:r.endsAt,
     items:r.items,
     bunker:BUNKER,
