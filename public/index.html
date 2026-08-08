@@ -73,6 +73,21 @@
       <button id="publicChatSend" type="button">전송</button>
     </div>
   </div>
+
+  <div id="partyRoomOverlay" class="party-room-overlay hidden">
+    <div class="party-room-head">
+      <div>
+        <strong id="partyOverlayName">PARTY</strong>
+        <small id="partyOverlayCode"></small>
+      </div>
+      <button id="partyOverlayLeave" type="button">나가기</button>
+    </div>
+    <div id="partyOverlayPlayers" class="party-overlay-players"></div>
+    <div class="party-overlay-actions">
+      <button id="partyOverlayReady" type="button">준비</button>
+      <button id="partyOverlayStart" type="button">게임 시작</button>
+    </div>
+  </div>
 </section>
 <section id="lobby" class="screen"><div class="panel"><h2 id="roomName"></h2><button id="roomCode"></button><div id="players"></div><button id="ready">준비</button><button id="start">게임 시작</button></div></section>
 <section id="game" class="screen game">
@@ -195,5 +210,5 @@
 </div>
 </section>
 <dialog id="dlg"><form id="form"><h2>새 방</h2><input id="title" required placeholder="방 제목"><select id="max"><option>1</option><option>2</option><option selected>4</option><option>6</option><option>8</option></select><button>생성</button></form></dialog>
-<div id="toast"></div></main><script src="/socket.io/socket.io.js"></script><script src="app.js"></script><button id="globalFullscreen" class="global-fullscreen" type="button">⛶</button>
+<div id="toast"></div></main><button id="globalFullscreen" class="global-fullscreen" type="button" aria-label="전체화면">⛶</button><script src="/socket.io/socket.io.js"></script><script src="app.js"></script>
 </body></html>
