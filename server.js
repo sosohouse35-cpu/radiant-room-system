@@ -103,7 +103,7 @@ function join(s,r,name,cb,preferredColor,preferredSessionId){
  const color=(requested&&!used.has(requested))
    ? requested
    : (COLORS.find(c=>!used.has(c))||pick(COLORS));
- const p={id:s.id,nickname:name,sessionId:String(preferredSessionId||""),ready:false,color,floor:1,x:1180,y:980,hands:[],stored:[],bunkerX:330,bunkerY:560,inBunker:false,hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,equipped:null,facingX:1,facingY:0,lastWeaponSwingAt:0,nextHallucinationAt:0,sick:false,inExpedition:false,expeditionX:260,expeditionY:900};
+ const p={id:s.id,nickname:name,sessionId:String(preferredSessionId||""),ready:false,color,floor:1,x:1180,y:980,hands:[],stored:[],bunkerX:330,bunkerY:560,inBunker:false,hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,equipped:null,facingX:1,facingY:0,lastWeaponSwingAt:0,nextHallucinationAt:0,sick:false,jumping:false,jumpUntil:0,flashlightEquipped:false,inExpedition:false,expeditionX:260,expeditionY:900};
  r.players.set(s.id,p);socketRoom.set(s.id,r.code);s.join(r.code);cb({ok:true,room:view(r),myId:s.id});emit(r)
 }
 
@@ -472,21 +472,24 @@ function failVentThreat(room,vent){
 
 
 const HOSPITAL_POINTS=[
-  {x:170,y:150},{x:335,y:145},{x:520,y:150},{x:720,y:150},{x:940,y:145},
-  {x:190,y:320},{x:390,y:315},{x:615,y:320},{x:835,y:315},{x:1030,y:320},
-  {x:165,y:515},{x:355,y:510},{x:560,y:510},{x:760,y:515},{x:980,y:510},
-  {x:190,y:710},{x:390,y:710},{x:595,y:710},{x:810,y:710},{x:1010,y:710}
+  {x:430,y:100},{x:560,y:100},{x:690,y:100},
+  {x:165,y:285},{x:280,y:285},
+  {x:820,y:285},{x:980,y:285},
+  {x:525,y:300},{x:525,y:470},{x:525,y:640},
+  {x:520,y:760},{x:690,y:760},
+  {x:820,y:665},{x:910,y:665},{x:925,y:820}
 ];
 
 const HOSPITAL_GLASS=[
-  {x:330,y:430,r:34},
-  {x:760,y:250,r:30},
-  {x:925,y:625,r:34}
+  {x:315,y:285,r:32},
+  {x:690,y:285,r:30},
+  {x:790,y:660,r:34},
+  {x:530,y:545,r:30}
 ];
 
 const HOSPITAL_TRIPWIRES=[
-  {x1:490,y1:390,x2:610,y2:390},
-  {x1:760,y1:585,x2:880,y2:585}
+  {x1:455,y1:415,x2:585,y2:415},
+  {x1:770,y1:555,x2:900,y2:555}
 ];
 
 function makeHospitalItems(){
@@ -516,7 +519,11 @@ function makeHospitalAbomination(){
     targetY:null,
     alertedUntil:0,
     lingerUntil:0,
-    lastAttackAt:0
+    lastAttackAt:0,
+    patrolX:930,
+    patrolY:180,
+    nextPatrolAt:0,
+    state:"patrol"
   };
 }
 
@@ -524,6 +531,77 @@ function expeditionReturnPoint(room){
   return room.expeditionLocation==="hospital"
     ? {x:115,y:835}
     : {x:250,y:850};
+}
+
+const HOSPITAL_WALLS_SERVER=[
+  {x:0,y:0,w:1200,h:30},{x:0,y:930,w:1200,h:30},
+  {x:0,y:0,w:30,h:960},{x:1170,y:0,w:30,h:960},
+
+  {x:500,y:110,w:30,h:620},
+
+  {x:300,y:70,w:430,h:25},{x:300,y:70,w:25,h:120},{x:705,y:70,w:25,h:120},
+
+  {x:90,y:190,w:25,h:430},{x:90,y:190,w:110,h:25},{x:90,y:595,w:110,h:25},
+
+  {x:115,y:300,w:250,h:25},{x:115,y:365,w:250,h:25},
+  {x:365,y:300,w:25,h:20},{x:365,y:370,w:25,h:20},
+
+  {x:530,y:300,w:300,h:25},{x:530,y:365,w:300,h:25},
+
+  {x:830,y:205,w:25,h:430},{x:830,y:205,w:115,h:25},{x:920,y:205,w:25,h:430},
+
+  {x:855,y:565,w:105,h:25},{x:935,y:565,w:25,h:125},
+
+  {x:500,y:665,w:250,h:25},{x:500,y:730,w:250,h:25},
+  {x:750,y:665,w:25,h:65},
+
+  {x:750,y:730,w:25,h:180},{x:820,y:730,w:25,h:180}
+];
+
+function hospitalBlockedPoint(x,y,radius=18){
+  return HOSPITAL_WALLS_SERVER.some(w=>
+    x+radius>w.x &&
+    x-radius<w.x+w.w &&
+    y+radius>w.y &&
+    y-radius<w.y+w.h
+  );
+}
+
+function chooseHospitalPatrolPoint(){
+  return pick([
+    {x:390,y:145},{x:170,y:260},{x:280,y:345},
+    {x:585,y:245},{x:735,y:345},{x:875,y:300},
+    {x:880,y:500},{x:650,y:705},{x:800,y:815}
+  ]);
+}
+
+function moveHospitalAbomination(a,targetX,targetY,speed){
+  const dx=targetX-a.x;
+  const dy=targetY-a.y;
+  const dist=Math.hypot(dx,dy);
+  if(dist<3)return;
+
+  const ux=dx/(dist||1),uy=dy/(dist||1);
+  const nx=a.x+ux*speed;
+  const ny=a.y+uy*speed;
+
+  if(!hospitalBlockedPoint(nx,a.y,18)){
+    a.x=nx;
+  }else if(!hospitalBlockedPoint(a.x,ny,18)){
+    a.y=ny;
+  }else{
+    const sx=a.x-uy*speed;
+    const sy=a.y+ux*speed;
+    if(!hospitalBlockedPoint(sx,sy,18)){
+      a.x=sx;a.y=sy;
+    }else{
+      const ox=a.x+uy*speed;
+      const oy=a.y-ux*speed;
+      if(!hospitalBlockedPoint(ox,oy,18)){
+        a.x=ox;a.y=oy;
+      }
+    }
+  }
 }
 io.on("connection",s=>{
  s.on("get-public-party-list",(lobbyId,cb=()=>{})=>{
@@ -906,6 +984,7 @@ io.on("connection",s=>{
     const returnPoint=expeditionReturnPoint(room);
     const handLimit=(room.bunkerStock.backpack||0)>0 ? 8 : 4;
     const hasGasMask=(room.bunkerStock.mask||0)>0;
+    const hasFlashlight=(room.bunkerStock.flashlight||0)>0;
 
     participants.forEach((id,index)=>{
       const player=room.players.get(id);
@@ -917,6 +996,9 @@ io.on("connection",s=>{
       player.expeditionY=returnPoint.y+Math.floor(index/3)*38;
       player.hands=[];
       player.sick=!hasGasMask;
+      player.flashlightEquipped=hasFlashlight;
+      player.jumping=false;
+      player.jumpUntil=0;
     });
 
     room.expeditionCooldownUntil=Date.now()+EXPEDITION_COOLDOWN_MS;
@@ -933,6 +1015,7 @@ io.on("connection",s=>{
       returnPoint,
       handLimit,
       hasGasMask,
+      hasFlashlight,
       cooldownUntil:room.expeditionCooldownUntil
     });
   },EXPEDITION_INVITE_MS);
@@ -960,6 +1043,40 @@ io.on("connection",s=>{
  });
 
 
+
+ s.on("expedition-jump",(payload={},cb=()=>{})=>{
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
+
+  if(!r||!p||!p.inExpedition){
+    return cb({ok:false,message:"탐사 중이 아닙니다."});
+  }
+
+  const now=Date.now();
+  if(p.jumping && now<p.jumpUntil){
+    return cb({ok:false,message:"이미 점프 중입니다."});
+  }
+
+  p.jumping=true;
+  p.jumpUntil=now+520;
+
+  io.to(r.code).emit("expedition-player-jumped",{
+    id:p.id,
+    jumpUntil:p.jumpUntil
+  });
+
+  setTimeout(()=>{
+    const room=rooms.get(r.code);
+    const player=room?.players.get(p.id);
+    if(player){
+      player.jumping=false;
+      io.to(r.code).emit("expedition-player-landed",{id:player.id});
+    }
+  },540);
+
+  cb({ok:true,jumpUntil:p.jumpUntil});
+ });
+
  s.on("expedition-move",(d)=>{
   const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
   if(!r||!p||!p.inExpedition)return;
@@ -979,39 +1096,43 @@ io.on("connection",s=>{
     p.facingY=fy/len;
   }
 
-  // Hospital Abomination은 시각이 아니라 소리를 따라감.
+  // Hospital Abomination: 감지 반경은 화면에 표시하지 않음.
+  // 반경 안에서 움직이거나 함정을 밟으면 소리를 듣고 추격.
   if(r.expeditionLocation==="hospital" && r.hospitalAbomination){
+    const a=r.hospitalAbomination;
     const moved=Math.hypot(p.expeditionX-prevX,p.expeditionY-prevY);
+    const distance=Math.hypot(
+      (p.expeditionX+15)-(a.x+18),
+      (p.expeditionY+15)-(a.y+18)
+    );
 
-    if(moved>1.2){
-      const a=r.hospitalAbomination;
-      const distance=Math.hypot(
-        (p.expeditionX+15)-(a.x+18),
-        (p.expeditionY+15)-(a.y+18)
-      );
+    const detectionRadius=250;
 
-      // 가까운 곳에서 움직이면 소리를 들음.
-      if(distance<330){
-        a.targetX=p.expeditionX;
-        a.targetY=p.expeditionY;
-        a.alertedUntil=Date.now()+3500;
-      }
+    if(moved>1.0 && distance<detectionRadius){
+      a.targetX=p.expeditionX;
+      a.targetY=p.expeditionY;
+      a.alertedUntil=Date.now()+4500;
+      a.state="chase";
     }
 
-    for(const g of HOSPITAL_GLASS){
-      if(Math.hypot((p.expeditionX+15)-g.x,(p.expeditionY+15)-g.y)<30){
-        r.hospitalAbomination.targetX=p.expeditionX;
-        r.hospitalAbomination.targetY=p.expeditionY;
-        r.hospitalAbomination.alertedUntil=Date.now()+5000;
+    if(!p.jumping){
+      for(const g of HOSPITAL_GLASS){
+        if(Math.hypot((p.expeditionX+15)-g.x,(p.expeditionY+15)-g.y)<30){
+          a.targetX=p.expeditionX;
+          a.targetY=p.expeditionY;
+          a.alertedUntil=Date.now()+6500;
+          a.state="chase";
+        }
       }
-    }
 
-    for(const w of HOSPITAL_TRIPWIRES){
-      const cx=(w.x1+w.x2)/2,cy=(w.y1+w.y2)/2;
-      if(Math.hypot((p.expeditionX+15)-cx,(p.expeditionY+15)-cy)<35){
-        r.hospitalAbomination.targetX=p.expeditionX;
-        r.hospitalAbomination.targetY=p.expeditionY;
-        r.hospitalAbomination.alertedUntil=Date.now()+6000;
+      for(const w of HOSPITAL_TRIPWIRES){
+        const cx=(w.x1+w.x2)/2,cy=(w.y1+w.y2)/2;
+        if(Math.hypot((p.expeditionX+15)-cx,(p.expeditionY+15)-cy)<38){
+          a.targetX=p.expeditionX;
+          a.targetY=p.expeditionY;
+          a.alertedUntil=Date.now()+7500;
+          a.state="chase";
+        }
       }
     }
   }
@@ -1019,6 +1140,8 @@ io.on("connection",s=>{
   s.to(r.code).emit("expedition-player-moved",{
     id:p.id,x:p.expeditionX,y:p.expeditionY,
     facingX:p.facingX,facingY:p.facingY,
+    jumping:p.jumping,
+    flashlightEquipped:p.flashlightEquipped,
     nickname:p.nickname,color:p.color
   });
  });
@@ -1756,7 +1879,7 @@ setInterval(()=>{
 
 // =========================================================
 // Hospital Abomination AI
-// =========================================================
+// 평상시 무작위 순찰 -> 소리 감지 시 고속 추격 -> 접촉 시 즉사
 setInterval(()=>{
   const now=Date.now();
 
@@ -1770,25 +1893,27 @@ setInterval(()=>{
 
     if(!explorers.length)continue;
 
-    if(a.targetX!=null && now<=a.alertedUntil){
-      const dx=a.targetX-a.x;
-      const dy=a.targetY-a.y;
-      const dist=Math.hypot(dx,dy);
+    const chasing=
+      a.targetX!=null &&
+      a.targetY!=null &&
+      now<=a.alertedUntil;
 
-      if(dist>12){
-        // 소리를 들으면 매우 빠르게 돌진
-        const speed=18;
-        a.x+=dx/(dist||1)*speed;
-        a.y+=dy/(dist||1)*speed;
-      }else{
-        a.lingerUntil=now+2200;
+    if(chasing){
+      a.state="chase";
+      moveHospitalAbomination(a,a.targetX,a.targetY,22);
+    }else{
+      a.state="patrol";
+      a.targetX=null;
+      a.targetY=null;
+
+      if(now>=a.nextPatrolAt || Math.hypot(a.patrolX-a.x,a.patrolY-a.y)<25){
+        const pt=chooseHospitalPatrolPoint();
+        a.patrolX=pt.x;
+        a.patrolY=pt.y;
+        a.nextPatrolAt=now+3500+Math.floor(Math.random()*3500);
       }
-    }else if(now>a.lingerUntil){
-      // 경계가 풀리면 천천히 배회
-      a.x+=Math.sin(now/1600)*1.1;
-      a.y+=Math.cos(now/1900)*.8;
-      a.x=Math.max(80,Math.min(1100,a.x));
-      a.y=Math.max(80,Math.min(860,a.y));
+
+      moveHospitalAbomination(a,a.patrolX,a.patrolY,3.2);
     }
 
     for(const p of explorers){
@@ -1797,14 +1922,14 @@ setInterval(()=>{
         (p.expeditionY+15)-(a.y+18)
       );
 
-      if(dist<48 && now-a.lastAttackAt>=850){
+      if(dist<46 && now-a.lastAttackAt>=850){
         a.lastAttackAt=now;
-        p.hp=Math.max(0,(p.hp??100)-40);
+        p.hp=0;
 
         io.to(r.code).emit("explorer-damaged",{
           playerId:p.id,
-          hp:p.hp,
-          damage:40,
+          hp:0,
+          damage:999,
           reason:"hospitalAbomination"
         });
       }
@@ -1813,7 +1938,8 @@ setInterval(()=>{
     io.to(r.code).emit("hospital-abomination-moved",{
       x:a.x,
       y:a.y,
-      alerted:a.targetX!=null&&now<=a.alertedUntil
+      alerted:a.state==="chase",
+      state:a.state
     });
   }
 },120);
