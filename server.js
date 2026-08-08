@@ -26,9 +26,9 @@ const EXPEDITION_INVITE_MS=15000;
 // v16 bunker survival
 const STAT_TICK_MS=10000;
 const DAMAGE_TICK_MS=3000;
-const VENT_MIN_DELAY_MS=35000;
-const VENT_MAX_DELAY_MS=75000;
-const VENT_STAGE_MS=10000;
+const VENT_MIN_DELAY_MS=70000;
+const VENT_MAX_DELAY_MS=140000;
+const VENT_STAGE_MS=30000;
 
 const DEFS={
  beans:{slots:1},water:{slots:1},soap:{slots:1},tape:{slots:1},trap:{slots:1},spray:{slots:1},
@@ -103,7 +103,7 @@ function join(s,r,name,cb,preferredColor,preferredSessionId){
  const color=(requested&&!used.has(requested))
    ? requested
    : (COLORS.find(c=>!used.has(c))||pick(COLORS));
- const p={id:s.id,nickname:name,sessionId:String(preferredSessionId||""),ready:false,color,floor:1,x:1180,y:980,hands:[],stored:[],bunkerX:330,bunkerY:560,inBunker:false,hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,equipped:null,facingX:1,facingY:0,nextHallucinationAt:0,inExpedition:false,expeditionX:260,expeditionY:900};
+ const p={id:s.id,nickname:name,sessionId:String(preferredSessionId||""),ready:false,color,floor:1,x:1180,y:980,hands:[],stored:[],bunkerX:330,bunkerY:560,inBunker:false,hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,equipped:null,facingX:1,facingY:0,lastWeaponSwingAt:0,nextHallucinationAt:0,inExpedition:false,expeditionX:260,expeditionY:900};
  r.players.set(s.id,p);socketRoom.set(s.id,r.code);s.join(r.code);cb({ok:true,room:view(r),myId:s.id});emit(r)
 }
 
@@ -550,7 +550,7 @@ io.on("connection",s=>{
     floor:1,x:1180,y:980,hands:[],stored:[],
     bunkerX:330,bunkerY:560,inBunker:false,
     hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,
-    equipped:null,facingX:1,facingY:0,nextHallucinationAt:0,
+    equipped:null,facingX:1,facingY:0,lastWeaponSwingAt:0,nextHallucinationAt:0,
     inExpedition:false,expeditionX:260,expeditionY:900
   };
   if(!p.nickname||!String(d.roomName||"").trim())return cb({ok:false,message:"입력 확인"});
@@ -584,7 +584,8 @@ io.on("connection",s=>{
       {id:"ventBottom",closed:false,threat:null,stage:0,nextStageAt:0}
     ],
     nextVentEventAt:Date.now()+VENT_MIN_DELAY_MS+Math.floor(Math.random()*(VENT_MAX_DELAY_MS-VENT_MIN_DELAY_MS)),
-    bunkerMobs:[]
+    bunkerMobs:[],
+    lastVentId:null
   };
   rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id});emit(r)
  });
@@ -736,7 +737,8 @@ io.on("connection",s=>{
       {id:"ventBottom",closed:false,threat:null,stage:0,nextStageAt:0}
     ],
     nextVentEventAt:Date.now()+VENT_MIN_DELAY_MS+Math.floor(Math.random()*(VENT_MAX_DELAY_MS-VENT_MIN_DELAY_MS)),
-    bunkerMobs:[]});
+    bunkerMobs:[],
+    lastVentId:null});
 
   cb({
     ok:true,
@@ -1159,6 +1161,25 @@ io.on("connection",s=>{
     return cb({ok:false,message:"장착한 무기가 없습니다."});
   }
 
+  const weaponCooldown={
+    woodenStick:700,
+    axe:1100
+  };
+
+  const cooldown=weaponCooldown[p.equipped]||800;
+  const now=Date.now();
+  const elapsed=now-(p.lastWeaponSwingAt||0);
+
+  if(elapsed<cooldown){
+    return cb({
+      ok:false,
+      cooldown:true,
+      remaining:cooldown-elapsed
+    });
+  }
+
+  p.lastWeaponSwingAt=now;
+
   const fx=Number(payload?.facingX),fy=Number(payload?.facingY);
   if(Number.isFinite(fx)&&Number.isFinite(fy)&&(Math.abs(fx)+Math.abs(fy)>.05)){
     const len=Math.hypot(fx,fy)||1;
@@ -1206,6 +1227,7 @@ io.on("connection",s=>{
     id:p.id,
     weapon:p.equipped,
     time:Date.now(),
+    cooldown,
     facingX:p.facingX,
     facingY:p.facingY
   });
@@ -1391,9 +1413,19 @@ setInterval(()=>{
       const available=(r.vents||[]).filter(v=>!v.closed);
 
       if(available.length){
-        const vent=pick(available);
+        let candidates=available;
 
-        // 위협의 종류는 완전 랜덤
+        // 세 환풍구 모두 동일하게 선택 대상.
+        // 직전에 사용한 환풍구만 연속으로 또 뽑히는 현상은 가능하면 피함.
+        if(available.length>1 && r.lastVentId){
+          const withoutLast=available.filter(v=>v.id!==r.lastVentId);
+          if(withoutLast.length)candidates=withoutLast;
+        }
+
+        const vent=pick(candidates);
+        r.lastVentId=vent.id;
+
+        // 위협 종류도 순서 없이 매번 랜덤
         vent.threat=pick(["ventLady","spider","rats","cameraBug"]);
         vent.stage=1;
         vent.nextStageAt=now+VENT_STAGE_MS;
