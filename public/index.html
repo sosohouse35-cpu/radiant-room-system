@@ -37,9 +37,21 @@
   </div>
 
   <div class="public-lobby-actions">
-    <button id="new" type="button">팀 방 만들기</button>
-    <input id="code" placeholder="방 코드">
-    <button id="join" type="button">방 참가</button>
+    <button id="createPartyButton" type="button">Create Party</button>
+    <button id="joinPartyButton" type="button">Join Party</button>
+  </div>
+
+  <div id="createPartyPanel" class="lobby-popup hidden">
+    <div class="message-head"><strong>CREATE PARTY</strong><button id="createPartyClose" type="button">×</button></div>
+    <label>파티 이름<input id="partyTitle" maxlength="24" placeholder="Party name"></label>
+    <label>최대 인원<select id="partyMax"><option value="2">2명</option><option value="3">3명</option><option value="4" selected>4명</option><option value="6">6명</option><option value="8">8명</option></select></label>
+    <label class="inline-check"><input id="partyPrivate" type="checkbox"> 비공개 파티</label>
+    <button id="partyCreateConfirm" type="button">Create</button>
+  </div>
+
+  <div id="joinPartyPanel" class="lobby-popup hidden">
+    <div class="message-head"><strong>JOIN PARTY</strong><button id="joinPartyClose" type="button">×</button></div>
+    <div id="partyList" class="party-list"></div>
   </div>
 
   <div id="publicLobbyMobile" class="public-lobby-mobile">
@@ -183,4 +195,5 @@
 </div>
 </section>
 <dialog id="dlg"><form id="form"><h2>새 방</h2><input id="title" required placeholder="방 제목"><select id="max"><option>1</option><option>2</option><option selected>4</option><option>6</option><option>8</option></select><button>생성</button></form></dialog>
-<div id="toast"></div></main><script src="/socket.io/socket.io.js"></script><script src="app.js"></script></body></html>
+<div id="toast"></div></main><script src="/socket.io/socket.io.js"></script><script src="app.js"></script><button id="globalFullscreen" class="global-fullscreen" type="button">⛶</button>
+</body></html>
