@@ -2488,5 +2488,19 @@ setInterval(()=>{
   }
 },1000);
 
-async function startServer(){try{await initDatabase();server.listen(PORT,()=>console.log(`[VERSION 31] ${PORT}`))}catch(e){console.error("[DB FATAL]",e);process.exit(1)}}
+async function startServer(){
+  try{
+    await initDatabase();
+
+    const port=Number(process.env.PORT)||3000;
+
+    server.listen(port,"0.0.0.0",()=>{
+      console.log(`[VERSION 31] server listening on ${port}`);
+      console.log("[V31] Neon DB ready");
+    });
+  }catch(e){
+    console.error("[DB FATAL]",e);
+    process.exit(1);
+  }
+}
 startServer();
