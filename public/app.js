@@ -1654,7 +1654,10 @@ function bunkerMoveLoop(){
     dy*=.707;
   }
 
-  if(Math.abs(dx)+Math.abs(dy)>.05){
+  if(
+    Math.abs(dx)+Math.abs(dy)>.05 &&
+    performance.now()>=bunkerSwingUntil
+  ){
     const len=Math.hypot(dx,dy)||1;
     bunkerFacing.x=dx/len;
     bunkerFacing.y=dy/len;
@@ -3053,9 +3056,8 @@ hospitalGlass.forEach(g=>{
     exctx.fillText("BUNKER EXIT",rx-36,ry-43);
   }
 
-  // v27: 옛 탐사 방식 - 시야 밖은 완전히 보이지 않음.
-  // 빛 번짐/그라데이션/반투명 효과 없음.
-  // 손전등은 오직 시야 반경만 확대한다.
+  // v28: 시야 밖만 완전 검정.
+  // 맵 픽셀 자체는 지우지 않으며, 손전등은 시야 반경만 확대.
   {
     const cx=vw/2;
     const cy=vh/2;
@@ -3065,17 +3067,20 @@ hospitalGlass.forEach(g=>{
       : Math.min(vw,vh)*0.34;
 
     exctx.save();
-
-    // 화면 전체를 완전 검정으로 덮는다.
     exctx.fillStyle="#000";
-    exctx.fillRect(0,0,vw,vh);
 
-    // 플레이어 중심의 딱 끊기는 원형 영역만 다시 보이게 한다.
-    exctx.globalCompositeOperation="destination-out";
-    exctx.fillStyle="#000";
-    exctx.beginPath();
-    exctx.arc(cx,cy,radius,0,Math.PI*2);
-    exctx.fill();
+    if(typeof Path2D!=="undefined"){
+      const mask=new Path2D();
+      mask.rect(0,0,vw,vh);
+      mask.arc(cx,cy,radius,0,Math.PI*2,true);
+      exctx.fill(mask,"evenodd");
+    }else{
+      // fallback: 원 밖을 4개 사각형으로 덮음
+      exctx.fillRect(0,0,vw,Math.max(0,cy-radius));
+      exctx.fillRect(0,cy+radius,vw,Math.max(0,vh-(cy+radius)));
+      exctx.fillRect(0,Math.max(0,cy-radius),Math.max(0,cx-radius),radius*2);
+      exctx.fillRect(cx+radius,Math.max(0,cy-radius),Math.max(0,vw-(cx+radius)),radius*2);
+    }
 
     exctx.restore();
   }
@@ -3154,7 +3159,10 @@ function expeditionLoop(){
     dy*=.707;
   }
 
-  if(Math.abs(dx)+Math.abs(dy)>.05){
+  if(
+    Math.abs(dx)+Math.abs(dy)>.05 &&
+    performance.now()>=expeditionSwingUntil
+  ){
     const len=Math.hypot(dx,dy)||1;
     expeditionFacing.x=dx/len;
     expeditionFacing.y=dy/len;
@@ -3942,6 +3950,27 @@ function isUiTarget(target){
   );
 }
 
+
+function aimAtScreenPointV28(clientX,clientY){
+  const vw=visualViewport?.width||innerWidth;
+  const vh=visualViewport?.height||innerHeight;
+  const dx=clientX-vw/2;
+  const dy=clientY-vh/2;
+  const len=Math.hypot(dx,dy);
+
+  if(len<5)return;
+
+  const facing={x:dx/len,y:dy/len};
+
+  if(bunkerRunning){
+    bunkerFacing={...facing};
+  }
+
+  if(expeditionRunning){
+    expeditionFacing={...facing};
+  }
+}
+
 function combatScreenPointer(e){
   if(isUiTarget(e.target))return;
   if(!(bunkerRunning||expeditionRunning))return;
@@ -3950,11 +3979,11 @@ function combatScreenPointer(e){
   const vw=visualViewport?.width||innerWidth;
 
   if(e.pointerType==="touch"){
-    // 왼쪽은 조이스틱 이동 영역으로 확보.
     if(e.clientX<vw*.42)return;
   }
 
-  updateMouseWeaponFacing(e.clientX,e.clientY);
+  // 이동 방향이 아니라 실제 터치/클릭 위치를 향해 조준
+  aimAtScreenPointV28(e.clientX,e.clientY);
   swingWeapon();
 }
 
