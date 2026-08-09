@@ -492,14 +492,29 @@ const HOSPITAL_POINTS=[
 ];
 
 const HOSPITAL_GLASS=[
-  {x:640,y:690,r:34},{x:1150,y:610,r:34},{x:1600,y:690,r:34},
-  {x:2060,y:900,r:34},{x:1480,y:1200,r:34},{x:1870,y:1410,r:34}
+  {x:520,y:690,r:42},
+  {x:800,y:690,r:42},
+  {x:1150,y:520,r:42},
+  {x:1150,y:980,r:42},
+  {x:1480,y:690,r:42},
+  {x:1820,y:690,r:42},
+  {x:2070,y:900,r:42},
+  {x:1450,y:1200,r:42},
+  {x:1870,y:1510,r:42}
 ];
 
 const HOSPITAL_TRIPWIRES=[
-  {x1:460,y1:645,x2:520,y2:745},
-  {x1:1370,y1:645,x2:1430,y2:745},
-  {x1:1830,y1:1190,x2:1910,y2:1190}
+  // 왼쪽 연결 복도 전체 폭
+  {x1:620,y1:610,x2:620,y2:780},
+
+  // 중앙 세로 복도 전체 폭
+  {x1:1080,y1:850,x2:1270,y2:850},
+
+  // 오른쪽 연결 복도 전체 폭
+  {x1:1590,y1:610,x2:1590,y2:780},
+
+  // 아래 출구 복도 전체 폭
+  {x1:1780,y1:1370,x2:1970,y2:1370}
 ];
 
 function makeHospitalItems(){
@@ -530,6 +545,9 @@ function makeHospitalAbomination(){
     alertedUntil:0,
     lingerUntil:0,
     lastAttackAt:0,
+    attackWindupUntil:0,
+    attacking:false,
+    attackTargetId:null,
     patrolX:1150,
     patrolY:420,
     nextPatrolAt:0,
@@ -557,11 +575,11 @@ const HOSPITAL_WALKABLE_SERVER_V26=[
   {x:1080,y:1120,w:720,h:180},
   {x:1780,y:1120,w:190,h:520},
   {x:1560,y:1500,w:220,h:140},
-  {x:1030,y:560,w:100,h:270},
-  {x:1220,y:560,w:100,h:270},
-  {x:1730,y:1060,w:140,h:170}
+  {x:1010,y:540,w:140,h:310},
+  {x:1200,y:540,w:140,h:310},
+  {x:1700,y:1030,w:190,h:220}
 ,
-  {x:1680,y:1460,w:300,h:190}
+  {x:1660,y:1430,w:340,h:230}
 ];
 
 function hospitalWalkableV26(x,y,radius=16){
@@ -2051,9 +2069,11 @@ function hospitalPatrolDestinationV28(a){
 }
 
 // Hospital Abomination AI
-// 중앙 -> 왼쪽/위/오른쪽 끝 중 랜덤 -> 중앙 반복.
-// 평상시 이동속도는 플레이어와 비슷하고, 약 10초마다 다음 목적지를 결정.
-// 소리 감지 시에만 고속 추격, 접촉 시 즉사.
+// 평상시 중앙 -> 끝 -> 중앙 순찰.
+// 몸이 닿는 것만으로는 피해 없음.
+// 움직임/함정 소리를 감지하여 chase 상태가 된 경우에만 공격 가능.
+// 가까워지면 공격 모션(약 0.55초)을 먼저 시작하고,
+// 모션이 끝나는 순간 공격 범위 안에 있으면 즉사.
 // =========================================================
 setInterval(()=>{
   const now=Date.now();
@@ -2077,16 +2097,84 @@ setInterval(()=>{
     if(chasing){
       a.state="chase";
 
-      moveHospitalAbominationV26(
-        a,
-        a.targetX,
-        a.targetY,
-        22
-      );
+      // 공격 모션 중에는 움직이지 않음.
+      if(!a.attacking){
+        moveHospitalAbominationV26(
+          a,
+          a.targetX,
+          a.targetY,
+          22
+        );
+      }
+
+      // 현재 가장 가까운 살아있는 탐사자
+      let nearest=null;
+      let nearestDist=Infinity;
+
+      for(const p of explorers){
+        const d=Math.hypot(
+          (p.expeditionX+15)-(a.x+18),
+          (p.expeditionY+15)-(a.y+18)
+        );
+
+        if(d<nearestDist){
+          nearestDist=d;
+          nearest=p;
+        }
+      }
+
+      // 단순 접촉은 죽지 않음.
+      // chase 중이고 사거리 안이면 공격 동작을 먼저 시작.
+      if(
+        nearest &&
+        nearestDist<74 &&
+        !a.attacking &&
+        now-(a.lastAttackAt||0)>=1200
+      ){
+        a.attacking=true;
+        a.attackTargetId=nearest.id;
+        a.attackWindupUntil=now+550;
+        a.lastAttackAt=now;
+
+        io.to(r.code).emit("hospital-abomination-attack",{
+          x:a.x,
+          y:a.y,
+          targetId:nearest.id,
+          attackEndsAt:a.attackWindupUntil
+        });
+      }
+
+      // 공격 모션 종료 시 실제 판정
+      if(a.attacking && now>=a.attackWindupUntil){
+        const target=r.players.get(a.attackTargetId);
+        a.attacking=false;
+        a.attackTargetId=null;
+
+        if(target && target.inExpedition && (target.hp??0)>0){
+          const hitDist=Math.hypot(
+            (target.expeditionX+15)-(a.x+18),
+            (target.expeditionY+15)-(a.y+18)
+          );
+
+          if(hitDist<82){
+            target.hp=0;
+
+            io.to(r.code).emit("explorer-damaged",{
+              playerId:target.id,
+              hp:0,
+              damage:999,
+              reason:"hospitalAbomination"
+            });
+          }
+        }
+      }
     }else{
+      // 추격이 끝나면 공격 중 상태도 해제
       a.state="patrol";
       a.targetX=null;
       a.targetY=null;
+      a.attacking=false;
+      a.attackTargetId=null;
 
       if(a.patrolX==null||a.patrolY==null){
         a.patrolX=HOSPITAL_PATROL_CENTER_V28.x;
@@ -2115,30 +2203,13 @@ setInterval(()=>{
       );
     }
 
-    for(const p of explorers){
-      const dist=Math.hypot(
-        (p.expeditionX+15)-(a.x+18),
-        (p.expeditionY+15)-(a.y+18)
-      );
-
-      if(dist<46 && now-a.lastAttackAt>=850){
-        a.lastAttackAt=now;
-        p.hp=0;
-
-        io.to(r.code).emit("explorer-damaged",{
-          playerId:p.id,
-          hp:0,
-          damage:999,
-          reason:"hospitalAbomination"
-        });
-      }
-    }
-
     io.to(r.code).emit("hospital-abomination-moved",{
       x:a.x,
       y:a.y,
       alerted:a.state==="chase",
       state:a.state,
+      attacking:!!a.attacking,
+      attackWindupUntil:a.attackWindupUntil||0,
       patrolPhase:a.patrolPhase
     });
   }
