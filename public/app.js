@@ -7,6 +7,53 @@ const plctx=publicLobbyCanvas?.getContext("2d")||null;
 const canvas=$("canvas");
 const ctx=canvas?.getContext("2d")||null;
 
+var profileIdV30=localStorage.getItem("afterglowProfileId")||"";
+var persistentSanityPoints=Number(localStorage.getItem("afterglowSanityPoints")||0);
+var rainbowUnlockedV30=localStorage.getItem("afterglowRainbowUnlocked")==="1";
+var v30RainbowPhase=0;
+
+function saveProfileV30(p){
+  if(!p)return;
+  profileIdV30=p.profileId||profileIdV30;
+  persistentSanityPoints=Number(p.sanityPoints||0);
+  rainbowUnlockedV30=!!p.rainbowUnlocked;
+
+  if(profileIdV30)localStorage.setItem("afterglowProfileId",profileIdV30);
+  localStorage.setItem("afterglowSanityPoints",String(persistentSanityPoints));
+  localStorage.setItem("afterglowRainbowUnlocked",rainbowUnlockedV30?"1":"0");
+
+  renderPersistentSanityV30();
+  renderRainbowOptionV30();
+}
+
+function renderPersistentSanityV30(){
+  const el=$("persistentSanity");
+  if(el)el.textContent=`🧠 세인티 포인트 ${persistentSanityPoints.toLocaleString()}`;
+}
+
+function renderRainbowOptionV30(){
+  const select=$("color");
+  if(!select||!rainbowUnlockedV30)return;
+
+  if(![...select.options].some(o=>o.value==="rainbow")){
+    const opt=document.createElement("option");
+    opt.value="rainbow";
+    opt.textContent="🌈 V30 무지개";
+    select.appendChild(opt);
+  }
+}
+
+function rainbowColorV30(index=0){
+  const palette=[
+    "#ff3b30","#ff6b35","#ff9500","#ffcc00",
+    "#d4ff00","#78ff00","#32d74b","#00d4aa",
+    "#00e5ff","#0a84ff","#5e5ce6","#8e44ff",
+    "#bf5af2","#ff2dce","#ff375f","#ff7eb6"
+  ];
+  const phase=Math.floor(performance.now()/90);
+  return palette[(phase+index)%palette.length];
+}
+
 let room=null,myId=null;
 const sessionId=localStorage.getItem("afterglow-session") ||
   (crypto.randomUUID ? crypto.randomUUID() : `s-${Date.now()}-${Math.random()}`);
@@ -177,7 +224,7 @@ function renderPartyList(parties){
     const row=document.createElement("div");row.className="party-card";
     const info=document.createElement("div");info.innerHTML=`<b>${p.name}</b><br><small>${p.playerCount}/${p.maxPlayers}</small>`;
     const btn=document.createElement("button");btn.textContent="Join";
-    btn.onclick=()=>ioClient.emit("join-room",{nickname:$("nick").value.trim(),code:p.code,color:selectedColor,sessionId,publicLobbyId:currentPublicLobby},joined);
+    btn.onclick=()=>ioClient.emit("join-room",{nickname:$("nick").value.trim(),profileId:profileIdV30,color:$("color")?.value,code:p.code,color:selectedColor,sessionId,publicLobbyId:currentPublicLobby},joined);
     row.append(info,btn);host.appendChild(row);
   });
 }
@@ -197,6 +244,7 @@ function joined(r){
 
   room=r.room;
   myId=r.myId;
+  if(r.profile)saveProfileV30(r.profile);
 
   renderLobby();
 
@@ -284,7 +332,11 @@ ioClient.on("room-updated",r=>{
   }
 });
 
-ioClient.on("connect",()=>{
+ioClient.on("connect",()=>{ 
+  ioClient.emit("get-profile",{profileId:profileIdV30},r=>{
+    if(r?.ok)saveProfileV30(r.profile);
+  });
+
   $("status").textContent="연결됨";
 
   ioClient.emit("reconnect-room",sessionId,r=>{
@@ -1465,7 +1517,7 @@ function drawBunkerInterior(){
   );
   bctx.fill();
 
-  bctx.fillStyle=me.color||"#fff";
+  bctx.fillStyle=(me.color==="rainbow"?rainbowColorV30(0):(me.color||"#fff"));
   bctx.fillRect(
     vw/(2*scale)-bunkerCharSize/2,
     vh/(2*scale)-bunkerCharSize/2-bunkerJumpLift,
@@ -2541,6 +2593,43 @@ const EX_SOLIDS=[
 ];
 
 
+
+const hospitalMapV30Img=new Image();
+hospitalMapV30Img.src="hospital_v30.png";
+
+const HOSPITAL_V30_W=2400;
+const HOSPITAL_V30_H=2820;
+const HOSPITAL_V30_GRID_W=160;
+const HOSPITAL_V30_GRID_H=188;
+const HOSPITAL_V30_RUNS=[[],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[72,88]],[[1,19],[72,87]],[[1,19],[72,87]],[[1,19],[72,87]],[[1,19],[72,87]],[[1,19],[72,87]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[70,91],[138,157]],[[1,19],[67,91],[137,157]],[[1,20],[67,91],[137,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,93],[137,157]],[[1,20],[64,93],[137,157]],[[1,19],[67,93],[137,157]],[[1,19],[67,93],[138,157]],[[1,19],[72,93],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,158]],[[1,19],[72,87],[138,158]],[[1,19],[72,87],[138,158]],[[1,19],[72,87],[138,158]],[[1,19],[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,88],[138,158]],[[72,158]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[113,144]],[]];
+
+function hospitalWalkableClientV30(x,y,radius=12){
+  const pts=[
+    [x-radius,y-radius],[x+radius,y-radius],
+    [x-radius,y+radius],[x+radius,y+radius],
+    [x,y]
+  ];
+
+  for(const [px,py] of pts){
+    if(px<0||py<0||px>=HOSPITAL_V30_W||py>=HOSPITAL_V30_H)return false;
+    const gx=Math.max(0,Math.min(
+      HOSPITAL_V30_GRID_W-1,
+      Math.floor(px/HOSPITAL_V30_W*HOSPITAL_V30_GRID_W)
+    ));
+    const gy=Math.max(0,Math.min(
+      HOSPITAL_V30_GRID_H-1,
+      Math.floor(py/HOSPITAL_V30_H*HOSPITAL_V30_GRID_H)
+    ));
+
+    let ok=false;
+    for(const r of HOSPITAL_V30_RUNS[gy]||[]){
+      if(gx>=r[0]&&gx<=r[1]){ok=true;break;}
+    }
+    if(!ok)return false;
+  }
+
+  return true;
+}
 const HOSPITAL_WALKABLE_V26=[
   {x:720,y:80,w:980,h:180},
   {x:1080,y:220,w:190,h:900},
@@ -2580,7 +2669,7 @@ function hospitalHasLineOfSightV29(x1,y1,x2,y2){
     const y=y1+(y2-y1)*t;
 
     // ray가 검정 영역을 한 번이라도 지나면 벽 뒤로 판단
-    if(!hospitalWalkableClientV26(x,y,3)){
+    if(!hospitalWalkableClientV30(x,y,2)){
       return false;
     }
   }
@@ -2658,7 +2747,7 @@ function resizeExpeditionCanvas(){
 
 function exBlocked(x,y){
   if(expeditionLocation==="hospital"){
-    return !hospitalWalkableClientV26(x+15,y+15,15);
+    return !hospitalWalkableClientV30(x+15,y+15,12);
   }
   return currentExpeditionSolids().some(r=>
     x+EX_P>r.x &&
@@ -2722,21 +2811,14 @@ function drawExpedition(){
     exctx.fillStyle="#000";
     exctx.fillRect(0,0,vw,vh);
 
-    HOSPITAL_WALKABLE_V26.forEach((r,i)=>{
-      const sx=r.x-camX,sy=r.y-camY;
-      exctx.fillStyle=(i%2===0)?"#595f5b":"#505652";
-      exctx.fillRect(sx,sy,r.w,r.h);
-
-      exctx.strokeStyle="rgba(205,214,208,.07)";
-      exctx.lineWidth=1;
-      const tile=58;
-      for(let x=Math.floor(r.x/tile)*tile;x<r.x+r.w;x+=tile){
-        exctx.beginPath();exctx.moveTo(x-camX,sy);exctx.lineTo(x-camX,sy+r.h);exctx.stroke();
-      }
-      for(let y=Math.floor(r.y/tile)*tile;y<r.y+r.h;y+=tile){
-        exctx.beginPath();exctx.moveTo(sx,y-camY);exctx.lineTo(sx+r.w,y-camY);exctx.stroke();
-      }
-    });
+    // v30 user map image: no synthetic door/thin-wall geometry.
+    if(hospitalMapV30Img.complete){
+      exctx.drawImage(
+        hospitalMapV30Img,
+        -camX,-camY,
+        HOSPITAL_V30_W,HOSPITAL_V30_H
+      );
+    }
 
         // START FLOOR MARK: 바닥 표시일 뿐 벽이나 문이 아님.
     {
@@ -2898,7 +2980,7 @@ hospitalGlass.forEach(g=>{
     );
     exctx.fill();
 
-    exctx.fillStyle=p.color||"#bbb";
+    exctx.fillStyle=(p.color==="rainbow"?rainbowColorV30(Math.floor((p.x+p.y)/30)):(p.color||"#bbb"));
     exctx.fillRect(
       p.x-camX+15-size/2,
       p.y-camY+15-size/2-lift,
@@ -2989,7 +3071,7 @@ hospitalGlass.forEach(g=>{
   );
   exctx.fill();
 
-  exctx.fillStyle=me.color||"#fff";
+  exctx.fillStyle=(me.color==="rainbow"?rainbowColorV30(0):(me.color||"#fff"));
   exctx.fillRect(
     vw/2-charSize/2,
     vh/2-charSize/2-jumpLift,
@@ -3372,7 +3454,7 @@ function beginExpeditionFromServer(data){
   expeditionItems=data.items||[];
   expeditionReturnPoint=data.returnPoint||(
     expeditionLocation==="hospital"
-      ? {x:1660,y:1570}
+      ? {x:1897.5,y:2572.5}
       : {x:250,y:850}
   );
   expeditionHandLimit=data.handLimit||4;
