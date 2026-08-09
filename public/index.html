@@ -359,14 +359,21 @@
 </div>
 
 <div id="firewallPanel" class="v32-modal hidden">
-  <div class="v32-card">
-    <h3>🛡 FIREWALL</h3>
-    <p>표시된 순서를 그대로 입력하세요.</p>
-    <div id="firewallSequence" class="fw-seq"></div>
-    <div id="firewallAnswer" class="fw-answer"></div>
-    <div class="fw-buttons">
-      <button data-fw="0">▲</button><button data-fw="1">■</button>
-      <button data-fw="2">●</button><button data-fw="3">◆</button>
+  <div class="v32-card firewall-card-v322">
+    <h3>🛡 FIREWALL SECURITY</h3>
+    <div id="firewallStatusV322">
+      <div class="firewall-six" id="firewallBarsV322">▰▰▰▰▰▰</div>
+      <p>상태: <b id="firewallStateV322">정상</b></p>
+      <p class="small">보안 6칸이 모두 사라지면 컴퓨터가 해킹됩니다.</p>
+      <button id="firewallStartV322" type="button">복구 게임 시작</button>
+      <button id="firewallPayHack" class="hidden" type="button">물자 지불하고 해킹 해제</button>
+      <button id="firewallCloseV322" type="button">닫기</button>
+    </div>
+    <div id="firewallGameAreaV322" class="hidden">
+      <div id="firewallStageV322">보안 충전 0 / 6</div>
+      <div class="fw-progress"><div id="firewallProgressV322"></div></div>
+      <canvas id="firewallCanvasV322"></canvas>
+      <p class="small">WASD / 방향키로 움직여 바이러스 탄막을 피하세요. 맞으면 즉시 실패합니다.</p>
     </div>
   </div>
 </div>
