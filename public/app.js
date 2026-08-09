@@ -625,7 +625,7 @@ const ICON={beans:"🥫",water:"💧",soap:"🧼",tape:"🩹",trap:"🪤",spray:
 const ITEM_NAME={beans:"통조림",water:"물",soap:"비누",tape:"테이프",trap:"덫",spray:"살충제",medkit:"메디킷",battery:"배터리",flashlight:"손전등",mask:"방독면",axe:"도끼",backpack:"가방",blueprint:"블루프린트",toolbox:"공구함",map:"지도",radio:"라디오"};
 let grids={},furn={},players={},items=[],me={},floor=1,bunker,defs={},keys=new Set(),near=null,ends=0,running=false,last=0,lastSend=0;
 var day=1,sanity=0,bounty=0,bountyLevel=1,bunkerStock={},weapons={},power=100,securityState="LOCKED";
-var firewall=100,blackout=false,v32Sleeping=false,v32SleepEndsAt=0;
+var firewall=6,hacked=false,blackout=false,v32Sleeping=false,v32SleepEndsAt=0;
 var hp=100,hunger=100,thirst=100,hygiene=100,fatigue=0,sanityStat=100;
 var bunkerPlayer={x:330,y:560};
 
@@ -2111,7 +2111,7 @@ document.querySelector(".computer-tabs").onclick=e=>{
 
 $("computerContent").onclick=e=>{
   if(e.target.dataset.firewallStart){
-    startFirewallMiniGameV32();
+    startFirewallBullethellV322();
     return;
   }
   const type=e.target.dataset.buy;
@@ -2138,7 +2138,7 @@ function updateV32HudVisibility(){
 function renderV32SystemHUD(){
   updateV32HudVisibility();
   if($("v32PowerText"))$("v32PowerText").textContent=`⚡ ${Math.round(power)}%`;
-  if($("v32FirewallText"))$("v32FirewallText").textContent=`🛡 ${Math.round(firewall)}%`;
+  if($("v32FirewallText"))$("v32FirewallText").textContent=`🛡 ${"▰".repeat(Math.max(0,Math.round(firewall)))}${"▱".repeat(Math.max(0,6-Math.round(firewall)))}`;
   if($("v32BatteryText"))$("v32BatteryText").textContent=`🔋 ×${bunkerStock.battery||0}`;
 }
 
@@ -2180,6 +2180,158 @@ function useGeneratorBatteryV32(){
     if(!r?.ok)return toast(r?.message||"배터리가 없습니다.");
     power=r.state.power;blackout=r.state.blackout;bunkerStock=r.bunkerStock||bunkerStock;
     renderV32SystemHUD();toast("배터리로 전력을 복구했습니다.");
+  });
+}
+
+
+var firewallGameV322=null;
+
+function openFirewallStatusV322(){
+  const panel=$("firewallPanel");
+  if(!panel)return;
+  $("firewallBarsV322").textContent=
+    `${"▰".repeat(Math.max(0,Math.round(firewall)))}${"▱".repeat(Math.max(0,6-Math.round(firewall)))}`;
+  $("firewallStateV322").textContent=hacked?"HACKED":firewall<=2?"위험":"정상";
+  $("firewallPayHack")?.classList.toggle("hidden",!hacked);
+  $("firewallStartV322").disabled=hacked;
+  $("firewallGameAreaV322")?.classList.add("hidden");
+  $("firewallStatusV322")?.classList.remove("hidden");
+  panel.classList.remove("hidden");
+  document.body.classList.add("v32-modal-open");
+}
+
+function stopFirewallBullethellV322(success){
+  const g=firewallGameV322;
+  if(!g)return;
+  cancelAnimationFrame(g.raf);
+  firewallGameV322=null;
+
+  if(success){
+    ioClient.emit("v32-firewall-survived",{},r=>{
+      if(r?.ok){
+        firewall=r.state.firewall; hacked=!!r.state.hacked;
+        toast("🛡 FIREWALL 6칸 완전 복구!");
+        renderV32SystemHUD();
+        openFirewallStatusV322();
+      }else toast(r?.message||"Firewall 복구 실패");
+    });
+  }else{
+    ioClient.emit("v32-firewall-failed",{},r=>{
+      if(r?.state){
+        firewall=r.state.firewall; hacked=!!r.state.hacked;
+        renderV32SystemHUD();
+      }
+      toast(hacked?"💀 컴퓨터가 해킹되었습니다.":"Firewall 복구 실패 · 보안 1칸 감소");
+      openFirewallStatusV322();
+    });
+  }
+}
+
+function startFirewallBullethellV322(){
+  ioClient.emit("v32-firewall-start",{},r=>{
+    if(!r?.ok)return toast(r?.message||"Firewall 실행 불가");
+
+    $("firewallStatusV322")?.classList.add("hidden");
+    $("firewallGameAreaV322")?.classList.remove("hidden");
+
+    const c=$("firewallCanvasV322"),ctx=c.getContext("2d");
+    const rect=c.getBoundingClientRect(),dpr=devicePixelRatio||1;
+    c.width=Math.max(1,Math.round(rect.width*dpr));
+    c.height=Math.max(1,Math.round(rect.height*dpr));
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+
+    const W=rect.width,H=rect.height;
+    const g={
+      player:{x:W/2,y:H*.82,r:8},
+      bullets:[],
+      viruses:[
+        {x:W*.35,y:H*.28,r:20},
+        {x:W*.50,y:H*.20,r:22},
+        {x:W*.65,y:H*.28,r:20}
+      ],
+      keys:new Set(),
+      start:performance.now(),
+      lastShot:0,
+      duration:r.duration||36000,
+      raf:0
+    };
+    firewallGameV322=g;
+
+    const kd=e=>{if(firewallGameV322)g.keys.add(e.key.toLowerCase())};
+    const ku=e=>{if(firewallGameV322)g.keys.delete(e.key.toLowerCase())};
+    window.addEventListener("keydown",kd);
+    window.addEventListener("keyup",ku);
+
+    function shoot(now){
+      if(now-g.lastShot<260)return;
+      g.lastShot=now;
+      for(const v of g.viruses){
+        const base=Math.atan2(g.player.y-v.y,g.player.x-v.x);
+        for(let k=-2;k<=2;k++){
+          const a=base+k*.17+(Math.random()-.5)*.06;
+          const speed=3.8+Math.random()*1.5;
+          g.bullets.push({x:v.x,y:v.y,vx:Math.cos(a)*speed,vy:Math.sin(a)*speed,r:4});
+        }
+      }
+    }
+
+    function loop(now){
+      if(firewallGameV322!==g)return;
+      const elapsed=now-g.start;
+      const sec=Math.floor(elapsed/6000);
+      $("firewallStageV322").textContent=`보안 충전 ${Math.min(6,sec)} / 6`;
+
+      const sp=4.2;
+      if(g.keys.has("arrowleft")||g.keys.has("a"))g.player.x-=sp;
+      if(g.keys.has("arrowright")||g.keys.has("d"))g.player.x+=sp;
+      if(g.keys.has("arrowup")||g.keys.has("w"))g.player.y-=sp;
+      if(g.keys.has("arrowdown")||g.keys.has("s"))g.player.y+=sp;
+      g.player.x=Math.max(10,Math.min(W-10,g.player.x));
+      g.player.y=Math.max(10,Math.min(H-10,g.player.y));
+
+      shoot(now);
+      for(const b of g.bullets){b.x+=b.vx;b.y+=b.vy;}
+      g.bullets=g.bullets.filter(b=>b.x>-20&&b.y>-20&&b.x<W+20&&b.y<H+20);
+
+      for(const b of g.bullets){
+        if(Math.hypot(b.x-g.player.x,b.y-g.player.y)<b.r+g.player.r){
+          window.removeEventListener("keydown",kd);window.removeEventListener("keyup",ku);
+          return stopFirewallBullethellV322(false);
+        }
+      }
+
+      ctx.fillStyle="#050807";ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle="#1d402a";ctx.strokeRect(1,1,W-2,H-2);
+
+      for(const v of g.viruses){
+        ctx.fillStyle="#b6192e";ctx.beginPath();ctx.arc(v.x,v.y,v.r,0,Math.PI*2);ctx.fill();
+        ctx.fillStyle="#fff";ctx.font="18px sans-serif";ctx.textAlign="center";ctx.fillText("☣",v.x,v.y+6);
+      }
+      ctx.fillStyle="#ff425d";
+      for(const b of g.bullets){ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();}
+      ctx.fillStyle="#6cff96";ctx.beginPath();ctx.arc(g.player.x,g.player.y,g.player.r,0,Math.PI*2);ctx.fill();
+
+      const pct=Math.min(1,elapsed/g.duration);
+      $("firewallProgressV322").style.width=`${pct*100}%`;
+
+      if(elapsed>=g.duration){
+        window.removeEventListener("keydown",kd);window.removeEventListener("keyup",ku);
+        return stopFirewallBullethellV322(true);
+      }
+      g.raf=requestAnimationFrame(loop);
+    }
+    g.raf=requestAnimationFrame(loop);
+  });
+}
+
+function payHackerV322(){
+  ioClient.emit("v32-pay-hacker",{},r=>{
+    if(!r?.ok)return toast(r?.message||"물자가 부족합니다.");
+    bunkerStock=r.bunkerStock||bunkerStock;
+    firewall=r.state.firewall; hacked=!!r.state.hacked;
+    renderV32SystemHUD();
+    toast("물자를 넘겨 해킹을 해제했습니다. 보안 1칸부터 다시 시작합니다.");
+    openFirewallStatusV322();
   });
 }
 
@@ -4379,9 +4531,11 @@ ioClient.on("account-state",a=>{
   }
 });
 
+ioClient.on("computer-hacked",()=>{hacked=true;firewall=0;renderV32SystemHUD();toast("💀 컴퓨터가 해킹당했습니다.");});
 ioClient.on("v32-system-state",d=>{
   power=d.power??power;
   firewall=d.firewall??firewall;
+  hacked=!!d.hacked;
   blackout=!!d.blackout;
   bounty=d.bounty??bounty;
   bountyLevel=d.bountyLevel??bountyLevel;
@@ -4675,3 +4829,7 @@ document.addEventListener("DOMContentLoaded",()=>{
   $("sleepOverlay")?.classList.add("hidden");
   if(!bunkerRunning)$("v32SystemHud")?.classList.add("hidden");
 });
+
+if($("firewallStartV322"))$("firewallStartV322").onclick=startFirewallBullethellV322;
+if($("firewallPayHack"))$("firewallPayHack").onclick=payHackerV322;
+if($("firewallCloseV322"))$("firewallCloseV322").onclick=()=>closeV32Modal("firewallPanel");
