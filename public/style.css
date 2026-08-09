@@ -1110,3 +1110,9 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
     max-height:72dvh!important;
   }
 }
+
+
+/* v24: 탐사 캔버스 가시성 안정화 */
+#expeditionCanvas{
+  background:#3f4542!important;
+}
