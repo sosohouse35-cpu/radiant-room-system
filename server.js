@@ -182,7 +182,8 @@ const V32_SLEEP_MS=9000;
 function v32PublicState(r){
   return {
     power:Math.max(0,Math.min(100,Number(r.power??100))),
-    firewall:Math.max(0,Math.min(100,Number(r.firewall??100))),
+    firewall:Math.max(0,Math.min(6,Number(r.firewall??6))),
+    hacked:!!r.hacked,
     blackout:!!r.blackout,
     batteryCount:Number(r.bunkerStock?.battery||0),
     bounty:r.bounty||0,
@@ -1040,7 +1041,8 @@ io.on("connection",s=>{
     bunkerStock:{beans:0,water:0,medkit:0,battery:0,flashlight:0,mask:0,axe:0,backpack:0,blueprint:0,toolbox:0,map:0,radio:0},
     weapons:{woodenStick:1,axe:0},
     power:100,
-    firewall:100,
+    firewall:6,
+    hacked:false,
     blackout:false,
     security:"LOCKED",
     messages:[],
@@ -2064,21 +2066,60 @@ io.on("connection",s=>{
  s.on("v32-firewall-start",(d={},cb=()=>{})=>{
   const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
   if(!r||!p||!p.inBunker)return cb({ok:false,message:"벙커 안이 아닙니다."});
-  const seq=Array.from({length:5},()=>Math.floor(Math.random()*4));
-  p.firewallChallenge={seq,createdAt:Date.now()};
-  cb({ok:true,sequence:seq});
+  if(r.hacked)return cb({ok:false,hacked:true,message:"컴퓨터가 해킹되었습니다. 먼저 물자를 지불해 복구해야 합니다."});
+
+  p.firewallChallenge={
+    startedAt:Date.now(),
+    duration:36000,
+    targetBars:6
+  };
+  cb({ok:true,duration:36000,bars:r.firewall??0});
  });
 
- s.on("v32-firewall-submit",(d={},cb=()=>{})=>{
+ s.on("v32-firewall-survived",async(d={},cb=()=>{})=>{
   const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
-  if(!r||!p||!p.firewallChallenge)return cb({ok:false,message:"Firewall 세션 없음"});
-  const answer=Array.isArray(d.answer)?d.answer.map(Number):[];
-  const seq=p.firewallChallenge.seq;p.firewallChallenge=null;
-  const success=seq.length===answer.length&&seq.every((v,i)=>v===answer[i]);
-  if(success){r.firewall=Math.min(100,(r.firewall??100)+45);r.security="ONLINE";}
-  else{r.firewall=Math.max(0,(r.firewall??100)-10);r.security="ALERT";}
+  if(!r||!p||!p.firewallChallenge)return cb({ok:false,message:"Firewall 게임 세션이 없습니다."});
+  const elapsed=Date.now()-p.firewallChallenge.startedAt;
+  p.firewallChallenge=null;
+
+  if(elapsed<32000)return cb({ok:false,message:"복구 시간이 부족합니다."});
+
+  r.firewall=6;
+  r.hacked=false;
+  r.security="ONLINE";
   v32EmitState(r);
-  cb({ok:true,success,state:v32PublicState(r)});
+  cb({ok:true,state:v32PublicState(r)});
+ });
+
+ s.on("v32-firewall-failed",(d={},cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p)return cb({ok:false});
+  p.firewallChallenge=null;
+  r.firewall=Math.max(0,(r.firewall??0)-1);
+  if(r.firewall<=0){r.firewall=0;r.hacked=true;r.security="HACKED";}
+  v32EmitState(r);
+  cb({ok:true,state:v32PublicState(r)});
+ });
+
+ s.on("v32-pay-hacker",(d={},cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p||!r.hacked)return cb({ok:false,message:"현재 해킹 상태가 아닙니다."});
+
+  // 해킹 해제 비용: 물 2 + 통조림 2 + 배터리 1
+  const cost={water:2,beans:2,battery:1};
+  for(const [type,n] of Object.entries(cost)){
+    if((r.bunkerStock[type]||0)<n){
+      return cb({ok:false,message:"해킹 해제 물자가 부족합니다. 물 2, 통조림 2, 배터리 1이 필요합니다.",cost});
+    }
+  }
+  for(const [type,n] of Object.entries(cost))r.bunkerStock[type]-=n;
+
+  r.hacked=false;
+  r.firewall=1;
+  r.security="RECOVERING";
+  v32EmitState(r);
+  io.to(r.code).emit("bunker-state",{bunkerStock:r.bunkerStock,security:r.security,power:r.power});
+  cb({ok:true,state:v32PublicState(r),bunkerStock:r.bunkerStock});
  });
  s.on("leave-room",(cb=()=>{})=>{leave(s);cb({ok:true})});s.on("disconnect",()=>{
   socketAccounts.delete(s.id);leavePublicLobby(s);scheduleRoomDisconnect(s)})
@@ -2622,12 +2663,19 @@ setInterval(()=>{
 
 setInterval(()=>{
   for(const r of rooms.values()){
-    if(r.status!=="playing")continue;
-    r.firewall=Math.max(0,(r.firewall??100)-5);
-    if(r.firewall<=20)r.security="ALERT";
+    if(r.status!=="playing"||r.hacked)continue;
+    r.firewall=Math.max(0,(r.firewall??6)-1);
+    if(r.firewall<=0){
+      r.firewall=0;
+      r.hacked=true;
+      r.security="HACKED";
+      io.to(r.code).emit("computer-hacked",{message:"컴퓨터가 해킹당했습니다."});
+    }else if(r.firewall<=2){
+      r.security="ALERT";
+    }
     v32EmitState(r);
   }
-},V32_FIREWALL_TICK_MS);
+},90000);
 
 async function startServer(){
   try{
