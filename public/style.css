@@ -1336,3 +1336,58 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
     grid-template-columns:1fr;
   }
 }
+
+
+/* =========================================================
+   ADMIN SETTINGS
+========================================================= */
+.admin-settings-button{
+  position:fixed;
+  right:18px;
+  top:72px;
+  z-index:90;
+  width:44px;
+  height:44px;
+  border-radius:50%;
+  font-size:20px;
+  display:grid;
+  place-items:center;
+}
+
+.admin-settings-panel{
+  position:fixed;
+  right:18px;
+  top:122px;
+  z-index:95;
+  width:min(300px,calc(100vw - 36px));
+  padding:12px;
+  background:rgba(16,20,17,.98);
+  border:1px solid #66715d;
+  box-shadow:0 12px 36px rgba(0,0,0,.48);
+}
+
+.admin-toggle{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:12px 4px;
+  border-bottom:1px solid rgba(255,255,255,.08);
+}
+
+.admin-toggle input{
+  width:22px;
+  height:22px;
+}
+
+@media(max-width:760px){
+  .admin-settings-button{
+    right:10px;
+    top:62px;
+  }
+
+  .admin-settings-panel{
+    right:10px;
+    top:112px;
+  }
+}
