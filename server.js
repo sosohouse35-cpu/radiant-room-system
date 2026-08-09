@@ -17,6 +17,7 @@ const rooms=new Map(), socketRoom=new Map();
 const V30_EVENT_ACTIVE=true;
 const V30_EVENT_POINTS=100000;
 const NAME_CHANGE_COST=1000;
+const ADMIN_ACCOUNT_ID="rjsdncjswo1004";
 
 const DATA_DIR=process.env.DATA_DIR || path.join(__dirname,"data");
 const ACCOUNT_FILE=path.join(DATA_DIR,"accounts.json");
@@ -60,6 +61,8 @@ function loadAccounts(){
         sanityPoints:Math.max(0,Number(a.sanityPoints)||0),
         rainbowUnlocked:!!a.rainbowUnlocked,
         v30Claimed:!!a.v30Claimed,
+        adminGodMode:!!a.adminGodMode,
+        adminFullBright:!!a.adminFullBright,
         createdAt:Number(a.createdAt)||Date.now()
       });
     }
@@ -80,6 +83,8 @@ function saveAccounts(){
       sanityPoints:a.sanityPoints,
       rainbowUnlocked:!!a.rainbowUnlocked,
       v30Claimed:!!a.v30Claimed,
+      adminGodMode:!!a.adminGodMode,
+      adminFullBright:!!a.adminFullBright,
       createdAt:a.createdAt
     };
   }
@@ -105,13 +110,22 @@ function accountView(a){
     rainbowUnlocked:!!a.rainbowUnlocked,
     v30Claimed:!!a.v30Claimed,
     eventActive:V30_EVENT_ACTIVE,
-    nameChangeCost:NAME_CHANGE_COST
+    nameChangeCost:NAME_CHANGE_COST,
+    isAdmin:a.id===ADMIN_ACCOUNT_ID,
+    adminGodMode:a.id===ADMIN_ACCOUNT_ID && !!a.adminGodMode,
+    adminFullBright:a.id===ADMIN_ACCOUNT_ID && !!a.adminFullBright
   };
 }
 
 function accountFromToken(token){
   const id=authTokens.get(String(token||""));
   return id ? accounts.get(id) : null;
+}
+
+function isGodModePlayer(p){
+  if(!p || p.accountId!==ADMIN_ACCOUNT_ID)return false;
+  const a=accounts.get(p.accountId);
+  return !!a?.adminGodMode;
 }
 
 function syncAccountToOnlinePlayers(a){
@@ -121,6 +135,10 @@ function syncAccountToOnlinePlayers(a){
         p.nickname=a.displayName;
         p.sanityPoints=a.sanityPoints;
         p.rainbowUnlocked=!!a.rainbowUnlocked;
+        p.adminGodMode=a.id===ADMIN_ACCOUNT_ID && !!a.adminGodMode;
+        p.adminFullBright=a.id===ADMIN_ACCOUNT_ID && !!a.adminFullBright;
+        p.adminGodMode=a.id===ADMIN_ACCOUNT_ID && !!a.adminGodMode;
+        p.adminFullBright=a.id===ADMIN_ACCOUNT_ID && !!a.adminFullBright;
       }
     }
   }
@@ -131,6 +149,8 @@ function syncAccountToOnlinePlayers(a){
         p.nickname=a.displayName;
         p.sanityPoints=a.sanityPoints;
         p.rainbowUnlocked=!!a.rainbowUnlocked;
+        p.adminGodMode=a.id===ADMIN_ACCOUNT_ID && !!a.adminGodMode;
+        p.adminFullBright=a.id===ADMIN_ACCOUNT_ID && !!a.adminFullBright;
       }
     }
   }
@@ -940,6 +960,21 @@ function clampHospitalMoveV30(x,y,oldX,oldY,radius=12){
   return {x:oldX,y:oldY};
 }
 io.on("connection",s=>{
+ s.on("set-admin-settings",(d={},cb=()=>{})=>{
+  const a=accountFromToken(d?.token);
+  if(!a || a.id!==ADMIN_ACCOUNT_ID){
+    return cb({ok:false,message:"권한이 없습니다."});
+  }
+
+  if(typeof d.godMode==="boolean")a.adminGodMode=d.godMode;
+  if(typeof d.fullBright==="boolean")a.adminFullBright=d.fullBright;
+
+  saveAccounts();
+  syncAccountToOnlinePlayers(a);
+
+  cb({ok:true,account:accountView(a)});
+ });
+
 
  s.on("register-account",(d={},cb=()=>{})=>{
   const accountId=safeAccountId(d?.accountId);
@@ -960,6 +995,8 @@ io.on("connection",s=>{
     sanityPoints:0,
     rainbowUnlocked:false,
     v30Claimed:false,
+    adminGodMode:false,
+    adminFullBright:false,
     createdAt:Date.now()
   };
 
@@ -1072,6 +1109,8 @@ io.on("connection",s=>{
     accountId:account.id,
     sanityPoints:account.sanityPoints,
     rainbowUnlocked:account.rainbowUnlocked,
+    adminGodMode:account.id===ADMIN_ACCOUNT_ID && !!account.adminGodMode,
+    adminFullBright:account.id===ADMIN_ACCOUNT_ID && !!account.adminFullBright,
     x:500+Math.random()*250,
     y:400+Math.random()*180
   };
@@ -1144,6 +1183,8 @@ io.on("connection",s=>{
     accountId:account.id,
     sanityPoints:account.sanityPoints,
     rainbowUnlocked:account.rainbowUnlocked,
+    adminGodMode:account.id===ADMIN_ACCOUNT_ID && !!account.adminGodMode,
+    adminFullBright:account.id===ADMIN_ACCOUNT_ID && !!account.adminFullBright,
     floor:1,x:1180,y:980,hands:[],stored:[],
     bunkerX:330,bunkerY:560,inBunker:false,
     hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,
@@ -2187,7 +2228,7 @@ setInterval(()=>{
       // 원작 벤트 산소 규칙: 2개 이상 닫으면 산소 부족
       if(closedVents>=2)damage+=5;
 
-      if(damage>0){
+      if(damage>0 && !isGodModePlayer(p)){
         p.hp=Math.max(0,p.hp-damage);
 
         io.to(r.code).emit("bunker-player-damaged",{
@@ -2336,14 +2377,16 @@ setInterval(()=>{
           mob.type==="spider"?9:
           14;
 
-        target.hp=Math.max(0,target.hp-damage);
+        if(!isGodModePlayer(target)){
+          target.hp=Math.max(0,target.hp-damage);
 
-        io.to(r.code).emit("bunker-player-damaged",{
+          io.to(r.code).emit("bunker-player-damaged",{
           id:target.id,
           hp:target.hp,
           damage,
           reason:mob.type
-        });
+          });
+        }
       }
 
       io.to(r.code).emit("bunker-mob-moved",{
@@ -2369,6 +2412,7 @@ setInterval(()=>{
   for(const r of rooms.values()){
     for(const p of r.players.values()){
       if(!p.inExpedition || !p.sick || (p.hp??0)<=0)continue;
+      if(isGodModePlayer(p))continue;
 
       p.hp=Math.max(0,(p.hp??100)-3);
 
@@ -2495,7 +2539,7 @@ setInterval(()=>{
             (target.expeditionY+15)-(a.y+18)
           );
 
-          if(hitDist<82){
+          if(hitDist<82 && !isGodModePlayer(target)){
             target.hp=0;
 
             io.to(r.code).emit("explorer-damaged",{
@@ -2598,14 +2642,16 @@ setInterval(()=>{
         // 근접 공격
         if(best<=52 && now-mutant.lastAttackAt>=900){
           mutant.lastAttackAt=now;
-          target.hp=Math.max(0,(target.hp??100)-12);
+          if(!isGodModePlayer(target)){
+            target.hp=Math.max(0,(target.hp??100)-12);
 
-          io.to(r.code).emit("explorer-damaged",{
+            io.to(r.code).emit("explorer-damaged",{
             playerId:target.id,
             hp:target.hp,
             mutantId:mutant.id,
             damage:12
-          });
+            });
+          }
         }
       }else{
         mutant.targetId=null;
