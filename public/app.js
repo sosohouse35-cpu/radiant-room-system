@@ -374,6 +374,8 @@ var hallucination={active:false,x:0,y:0,start:0,duration:4200,damage:0};
 var lastBunkerSend=0;
 var bunkerKeys=new Set();
 var bunkerRunning=false;
+var bunkerJumping=false;
+var bunkerJumpUntil=0;
 var bunkerNear=null;
 const roomsByFloor={
 1:[{n:"주방",x:80,y:120,w:800,h:520},{n:"거실",x:920,y:120,w:720,h:520},{n:"1층 화장실",x:1680,y:120,w:600,h:520},{n:"차고",x:80,y:720,w:800,h:640},{n:"벙커/복도",x:920,y:720,w:1360,h:640}],
@@ -1441,11 +1443,41 @@ function drawBunkerInterior(){
   });
 
   // 플레이어는 화면 중앙
+  const bunkerJumpRemaining=bunkerJumping
+    ? Math.max(0,Math.min(1,(bunkerJumpUntil-performance.now())/520))
+    : 0;
+  const bunkerJumpPhase=bunkerJumping?1-bunkerJumpRemaining:0;
+  const bunkerJumpArc=bunkerJumping?Math.sin(bunkerJumpPhase*Math.PI):0;
+  const bunkerJumpScale=1+bunkerJumpArc*.34;
+  const bunkerCharSize=30*bunkerJumpScale;
+  const bunkerJumpLift=bunkerJumpArc*10;
+
+  bctx.fillStyle=`rgba(0,0,0,${0.24-bunkerJumpArc*.10})`;
+  bctx.beginPath();
+  bctx.ellipse(
+    vw/(2*scale),
+    vh/(2*scale)+18,
+    15-bunkerJumpArc*4,
+    6-bunkerJumpArc*2,
+    0,0,Math.PI*2
+  );
+  bctx.fill();
+
   bctx.fillStyle=me.color||"#fff";
-  bctx.fillRect(vw/(2*scale)-15,vh/(2*scale)-15,30,30);
+  bctx.fillRect(
+    vw/(2*scale)-bunkerCharSize/2,
+    vh/(2*scale)-bunkerCharSize/2-bunkerJumpLift,
+    bunkerCharSize,
+    bunkerCharSize
+  );
   bctx.strokeStyle="#fff";
   bctx.lineWidth=2;
-  bctx.strokeRect(vw/(2*scale)-15,vh/(2*scale)-15,30,30);
+  bctx.strokeRect(
+    vw/(2*scale)-bunkerCharSize/2,
+    vh/(2*scale)-bunkerCharSize/2-bunkerJumpLift,
+    bunkerCharSize,
+    bunkerCharSize
+  );
 
   // 내 장착 무기: 마지막 이동 방향 + 강화된 무기 모양/베기 효과
   if(equippedWeapon){
@@ -2413,6 +2445,25 @@ ioClient.on("team-message",message=>{
   scrollChatBottom();
 });
 
+
+ioClient.on("bunker-player-jumped",d=>{
+  if(d.id===myId){
+    bunkerJumping=true;
+    bunkerJumpUntil=performance.now()+520;
+  }else if(bunkerOthers[d.id]){
+    bunkerOthers[d.id].jumping=true;
+    bunkerOthers[d.id].jumpUntil=Date.now()+520;
+  }
+});
+
+ioClient.on("bunker-player-landed",d=>{
+  if(d.id===myId){
+    bunkerJumping=false;
+  }else if(bunkerOthers[d.id]){
+    bunkerOthers[d.id].jumping=false;
+  }
+});
+
 ioClient.on("bunker-player-moved",p=>{
   bunkerOthers[p.id]={...(bunkerOthers[p.id]||{}),...p};
 });
@@ -2485,6 +2536,31 @@ const EX_SOLIDS=[
 ];
 
 
+const HOSPITAL_WALKABLE_V26=[
+  {x:720,y:80,w:980,h:180},
+  {x:1080,y:220,w:190,h:900},
+  {x:160,y:300,w:210,h:740},
+  {x:370,y:610,w:710,h:170},
+  {x:1270,y:610,w:700,h:170},
+  {x:1970,y:340,w:220,h:780},
+  {x:1970,y:980,w:300,h:240},
+  {x:1080,y:1120,w:720,h:180},
+  {x:1780,y:1120,w:190,h:520},
+  {x:1560,y:1500,w:220,h:140},
+  {x:1030,y:560,w:100,h:270},
+  {x:1220,y:560,w:100,h:270},
+  {x:1730,y:1060,w:140,h:170}
+];
+
+function hospitalWalkableClientV26(x,y,radius=15){
+  return HOSPITAL_WALKABLE_V26.some(r=>
+    x-radius>=r.x &&
+    x+radius<=r.x+r.w &&
+    y-radius>=r.y &&
+    y+radius<=r.y+r.h
+  );
+}
+
 const HOSPITAL_SOLIDS=[
   {x:0,y:0,w:1200,h:28},{x:0,y:932,w:1200,h:28},
   {x:0,y:0,w:28,h:960},{x:1172,y:0,w:28,h:960},
@@ -2541,6 +2617,9 @@ function resizeExpeditionCanvas(){
 }
 
 function exBlocked(x,y){
+  if(expeditionLocation==="hospital"){
+    return !hospitalWalkableClientV26(x+15,y+15,15);
+  }
   return currentExpeditionSolids().some(r=>
     x+EX_P>r.x &&
     x<r.x+r.w &&
@@ -2600,81 +2679,39 @@ function drawExpedition(){
 
   // 장소별 바닥/구조
   if(expeditionLocation==="hospital"){
-    exctx.fillStyle="#646a67";
+    exctx.fillStyle="#000";
     exctx.fillRect(0,0,vw,vh);
 
-    // 낡은 병원 타일
-    const tile=44;
-    for(let y=Math.floor(camY/tile)*tile;y<camY+vh+tile;y+=tile){
-      for(let x=Math.floor(camX/tile)*tile;x<camX+vw+tile;x+=tile){
-        exctx.fillStyle=
-          ((Math.floor(x/tile)+Math.floor(y/tile))%2===0)
-          ? "#858b87"
-          : "#737975";
-        exctx.fillRect(x-camX,y-camY,tile,tile);
+    HOSPITAL_WALKABLE_V26.forEach((r,i)=>{
+      const sx=r.x-camX,sy=r.y-camY;
+      exctx.fillStyle=(i%2===0)?"#d7dad8":"#cbd0cd";
+      exctx.fillRect(sx,sy,r.w,r.h);
+
+      exctx.strokeStyle="rgba(105,112,109,.15)";
+      exctx.lineWidth=1;
+      const tile=58;
+      for(let x=Math.floor(r.x/tile)*tile;x<r.x+r.w;x+=tile){
+        exctx.beginPath();exctx.moveTo(x-camX,sy);exctx.lineTo(x-camX,sy+r.h);exctx.stroke();
       }
-    }
-
-    currentExpeditionSolids().forEach((r,i)=>{
-      exctx.fillStyle=i<4?"#343a37":"#5b625f";
-      exctx.fillRect(r.x-camX,r.y-camY,r.w,r.h);
-      exctx.strokeStyle="#202421";
-      exctx.lineWidth=3;
-      exctx.strokeRect(r.x-camX,r.y-camY,r.w,r.h);
+      for(let y=Math.floor(r.y/tile)*tile;y<r.y+r.h;y+=tile){
+        exctx.beginPath();exctx.moveTo(sx,y-camY);exctx.lineTo(sx+r.w,y-camY);exctx.stroke();
+      }
     });
 
-    // 병원 구조 라벨 / 문: 사용자가 그린 큰 방 + 직선 복도 구조
-    const hospitalLabels=[
-      ["대기실",575,115],
-      ["서쪽 병동",135,365],
-      ["중앙 복도",545,420],
-      ["동쪽 병동",925,350],
-      ["치료실",930,600],
-      ["응급실",650,705],
-      ["출구 복도",825,800]
-    ];
-
-    exctx.fillStyle="rgba(235,240,236,.78)";
-    exctx.font="bold 13px sans-serif";
-    hospitalLabels.forEach(([name,x,y])=>{
-      exctx.fillText(name,x-camX,y-camY);
-    });
-
-    // doorway marks
-    const doors=[
-      {x:430,y:335,w:20,h:40},
-      {x:590,y:335,w:20,h:40},
-      {x:785,y:695,w:22,h:40},
-      {x:785,y:830,w:22,h:45}
-    ];
-
-    doors.forEach(d=>{
-      exctx.fillStyle="#aeb5b1";
-      exctx.fillRect(d.x-camX,d.y-camY,d.w,d.h);
-      exctx.strokeStyle="#343a37";
-      exctx.strokeRect(d.x-camX,d.y-camY,d.w,d.h);
-    });
-
-    // 깨진 유리
     hospitalGlass.forEach(g=>{
       const sx=g.x-camX,sy=g.y-camY;
-      exctx.strokeStyle="rgba(195,225,230,.8)";
+      exctx.strokeStyle="rgba(215,240,245,.95)";
       exctx.lineWidth=2;
-      for(let i=0;i<8;i++){
-        const a=i*Math.PI/4;
-        exctx.beginPath();
-        exctx.moveTo(sx,sy);
-        exctx.lineTo(
-          sx+Math.cos(a)*(12+(i%3)*5),
-          sy+Math.sin(a)*(12+(i%3)*5)
-        );
+      for(let i=0;i<9;i++){
+        const a=i*Math.PI/4.5;
+        exctx.beginPath();exctx.moveTo(sx,sy);
+        exctx.lineTo(sx+Math.cos(a)*(12+(i%3)*6),sy+Math.sin(a)*(12+(i%3)*6));
         exctx.stroke();
       }
     });
 
-    // 트립와이어
     hospitalTripwires.forEach(w=>{
-      exctx.strokeStyle="rgba(185,44,39,.85)";
+      exctx.strokeStyle="rgba(185,40,36,.92)";
       exctx.lineWidth=2;
       exctx.beginPath();
       exctx.moveTo(w.x1-camX,w.y1-camY);
@@ -2682,41 +2719,17 @@ function drawExpedition(){
       exctx.stroke();
     });
 
-    // Hospital Abomination - HP바 없음, 처치 불가
     if(hospitalAbomination){
-      const sx=hospitalAbomination.x-camX;
-      const sy=hospitalAbomination.y-camY;
-
-      exctx.fillStyle="#292e2b";
+      const sx=hospitalAbomination.x-camX,sy=hospitalAbomination.y-camY;
+      exctx.fillStyle="#242a26";
+      exctx.beginPath();exctx.ellipse(sx+18,sy+20,19,30,0,0,Math.PI*2);exctx.fill();
+      exctx.fillStyle="#4c5a50";exctx.fillRect(sx+7,sy+35,22,42);
+      exctx.strokeStyle="#151a17";exctx.lineWidth=7;
       exctx.beginPath();
-      exctx.ellipse(sx+18,sy+20,18,28,0,0,Math.PI*2);
-      exctx.fill();
-
-      exctx.fillStyle="#4f5b50";
-      exctx.fillRect(sx+7,sy+35,22,38);
-
-      exctx.strokeStyle="#1c211e";
-      exctx.lineWidth=7;
-      exctx.beginPath();
-      exctx.moveTo(sx+8,sy+44);
-      exctx.lineTo(sx-8,sy+65);
-      exctx.moveTo(sx+28,sy+44);
-      exctx.lineTo(sx+43,sy+67);
-      exctx.stroke();
-
-      // 눈은 가려져 있음
-      exctx.strokeStyle="#7c7267";
-      exctx.lineWidth=5;
-      exctx.beginPath();
-      exctx.moveTo(sx+8,sy+18);
-      exctx.lineTo(sx+29,sy+18);
-      exctx.stroke();
-
-      if(hospitalAbomination.alerted){
-        exctx.fillStyle="#ff8b70";
-        exctx.font="bold 11px sans-serif";
-        exctx.fillText("HEARD YOU",sx-7,sy-10);
-      }
+      exctx.moveTo(sx+8,sy+45);exctx.lineTo(sx-10,sy+70);
+      exctx.moveTo(sx+28,sy+45);exctx.lineTo(sx+45,sy+72);exctx.stroke();
+      exctx.strokeStyle="#877b6d";exctx.lineWidth=5;
+      exctx.beginPath();exctx.moveTo(sx+7,sy+18);exctx.lineTo(sx+30,sy+18);exctx.stroke();
     }
   }else{
     // 식료품점
@@ -2843,34 +2856,6 @@ function drawExpedition(){
     "hidden",
     expeditionLocation==="hospital" || nearestMutantDistance>260
   );
-
-  // 다른 플레이어의 손전등
-  Object.values(expeditionOthers).forEach(p=>{
-    if(!p.flashlightEquipped)return;
-
-    const sx=p.x-camX+15;
-    const sy=p.y-camY+15;
-    const angle=Math.atan2(p.facingY||0,p.facingX||1);
-
-    exctx.save();
-    exctx.translate(sx,sy);
-    exctx.rotate(angle);
-
-    const beam=exctx.createLinearGradient(0,0,230,0);
-    beam.addColorStop(0,"rgba(255,248,194,.20)");
-    beam.addColorStop(1,"rgba(255,248,194,0)");
-    exctx.fillStyle=beam;
-
-    exctx.beginPath();
-    exctx.moveTo(5,-12);
-    exctx.lineTo(240,-70);
-    exctx.lineTo(240,70);
-    exctx.lineTo(5,12);
-    exctx.closePath();
-    exctx.fill();
-
-    exctx.restore();
-  });
 
   // 내 캐릭터 중앙
   // 점프 시 위치만 뜨는 것이 아니라 캐릭터가 커졌다가 원래 크기로 돌아오는 모션.
@@ -3052,73 +3037,35 @@ function drawExpedition(){
     exctx.fillText("BUNKER EXIT",rx-36,ry-43);
   }
 
-  // 손전등 빛: 탐사 참가자 전원이 자동 착용.
-  if(expeditionFlashlight){
-    const fx=expeditionFacing.x||1;
-    const fy=expeditionFacing.y||0;
-    const angle=Math.atan2(fy,fx);
-    const cx=vw/2;
-    const cy=vh/2;
-
-    exctx.save();
-    exctx.translate(cx,cy);
-    exctx.rotate(angle);
-
-    const beam=exctx.createLinearGradient(15,0,330,0);
-    beam.addColorStop(0,"rgba(255,248,194,.30)");
-    beam.addColorStop(.5,"rgba(255,248,194,.18)");
-    beam.addColorStop(1,"rgba(255,248,194,0)");
-
-    exctx.fillStyle=beam;
-    exctx.beginPath();
-    exctx.moveTo(10,-18);
-    exctx.lineTo(350,-110);
-    exctx.lineTo(350,110);
-    exctx.lineTo(10,18);
-    exctx.closePath();
-    exctx.fill();
-
-    exctx.restore();
-  }
-
-  // 기본 원형 시야 + 마지막 이동 방향의 손전등 원뿔 시야
+  // v25: 예전 탐사처럼 부드러운 원형 시야.
+  // 손전등이 있으면 모양은 그대로 두고 반경만 더 넓어진다.
   {
-    const radius=Math.min(vw,vh)*.34;
     const cx=vw/2,cy=vh/2;
+    const radius=expeditionFlashlight
+      ? Math.min(vw,vh)*.62
+      : Math.min(vw,vh)*.40;
 
     exctx.save();
-    exctx.fillStyle="rgba(0,0,0,.82)";
+
+    // 시야 밖도 완전 검정이 아니라 구조가 희미하게 보이도록
+    exctx.fillStyle="rgba(0,0,0,.56)";
     exctx.fillRect(0,0,vw,vh);
+
     exctx.globalCompositeOperation="destination-out";
 
-    const circle=exctx.createRadialGradient(cx,cy,10,cx,cy,radius);
-    circle.addColorStop(0,"rgba(0,0,0,1)");
-    circle.addColorStop(.78,"rgba(0,0,0,.86)");
-    circle.addColorStop(1,"rgba(0,0,0,0)");
-    exctx.fillStyle=circle;
+    const vision=exctx.createRadialGradient(
+      cx,cy,radius*.14,
+      cx,cy,radius
+    );
+    vision.addColorStop(0,"rgba(0,0,0,1)");
+    vision.addColorStop(.62,"rgba(0,0,0,.98)");
+    vision.addColorStop(.86,"rgba(0,0,0,.70)");
+    vision.addColorStop(1,"rgba(0,0,0,0)");
+
+    exctx.fillStyle=vision;
     exctx.beginPath();
     exctx.arc(cx,cy,radius,0,Math.PI*2);
     exctx.fill();
-
-    if(expeditionFlashlight){
-      const angle=Math.atan2(expeditionFacing.y||0,expeditionFacing.x||1);
-      exctx.translate(cx,cy);
-      exctx.rotate(angle);
-
-      const beam=exctx.createLinearGradient(0,0,380,0);
-      beam.addColorStop(0,"rgba(0,0,0,1)");
-      beam.addColorStop(.72,"rgba(0,0,0,.86)");
-      beam.addColorStop(1,"rgba(0,0,0,0)");
-
-      exctx.fillStyle=beam;
-      exctx.beginPath();
-      exctx.moveTo(0,-28);
-      exctx.lineTo(385,-128);
-      exctx.lineTo(385,128);
-      exctx.lineTo(0,28);
-      exctx.closePath();
-      exctx.fill();
-    }
 
     exctx.restore();
   }
@@ -3126,6 +3073,31 @@ function drawExpedition(){
   requestAnimationFrame(drawExpedition);
 }
 
+
+
+function startBunkerJump(){
+  if(!bunkerRunning||bunkerJumping)return;
+
+  ioClient.emit("bunker-jump",{
+    roomCode:room?.code,
+    sessionId,
+    nickname:$("nick").value.trim()
+  },r=>{
+    if(!r?.ok)return;
+    bunkerJumping=true;
+    bunkerJumpUntil=performance.now()+520;
+    $("jumpBadge")?.classList.remove("hidden");
+    setTimeout(()=>{
+      bunkerJumping=false;
+      $("jumpBadge")?.classList.add("hidden");
+    },530);
+  });
+}
+
+function startCurrentJump(){
+  if(expeditionRunning)startExpeditionJump();
+  else if(bunkerRunning)startBunkerJump();
+}
 
 function startExpeditionJump(){
   if(!expeditionRunning || expeditionJumping)return;
@@ -3151,7 +3123,7 @@ function startExpeditionJump(){
 if($("mJump")){
   $("mJump").onclick=e=>{
     e.stopPropagation();
-    startExpeditionJump();
+    startCurrentJump();
   };
 }
 
@@ -3276,7 +3248,7 @@ function beginExpeditionFromServer(data){
   expeditionItems=data.items||[];
   expeditionReturnPoint=data.returnPoint||(
     expeditionLocation==="hospital"
-      ? {x:115,y:835}
+      ? {x:1660,y:1570}
       : {x:250,y:850}
   );
   expeditionHandLimit=data.handLimit||4;
@@ -3932,15 +3904,21 @@ const v21KeyboardControls=true;
 addEventListener("keydown",e=>{
   if(e.repeat)return;
 
-  if(expeditionRunning && e.code==="Space"){
+  if((expeditionRunning||bunkerRunning)&&e.code==="Space"){
     e.preventDefault();
-    startExpeditionJump();
+    startCurrentJump();
     return;
   }
 
-  if(expeditionRunning && e.key.toLowerCase()==="e"){
+  if(expeditionRunning&&e.key.toLowerCase()==="e"){
     e.preventDefault();
     takeExpeditionItem();
+    return;
+  }
+
+  if(bunkerRunning&&e.key.toLowerCase()==="e"){
+    e.preventDefault();
+    interactBunker();
     return;
   }
 });
