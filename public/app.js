@@ -2550,6 +2550,8 @@ const HOSPITAL_WALKABLE_V26=[
   {x:1030,y:560,w:100,h:270},
   {x:1220,y:560,w:100,h:270},
   {x:1730,y:1060,w:140,h:170}
+,
+  {x:1680,y:1460,w:300,h:190}
 ];
 
 function hospitalWalkableClientV26(x,y,radius=15){
@@ -2698,7 +2700,21 @@ function drawExpedition(){
       }
     });
 
-    hospitalGlass.forEach(g=>{
+        // START FLOOR MARK: 바닥 표시일 뿐 벽이나 문이 아님.
+    {
+      const sx=1660-camX;
+      const sy=1570-camY;
+      exctx.strokeStyle="rgba(65,76,70,.55)";
+      exctx.lineWidth=3;
+      exctx.setLineDash([10,8]);
+      exctx.strokeRect(sx-45,sy-45,90,90);
+      exctx.setLineDash([]);
+      exctx.fillStyle="rgba(45,55,50,.75)";
+      exctx.font="bold 13px sans-serif";
+      exctx.fillText("START / EXIT",sx-42,sy-56);
+    }
+
+hospitalGlass.forEach(g=>{
       const sx=g.x-camX,sy=g.y-camY;
       exctx.strokeStyle="rgba(215,240,245,.95)";
       exctx.lineWidth=2;
@@ -3037,32 +3053,26 @@ function drawExpedition(){
     exctx.fillText("BUNKER EXIT",rx-36,ry-43);
   }
 
-  // v25: 예전 탐사처럼 부드러운 원형 시야.
-  // 손전등이 있으면 모양은 그대로 두고 반경만 더 넓어진다.
+  // v27: 옛 탐사 방식 - 시야 밖은 완전히 보이지 않음.
+  // 빛 번짐/그라데이션/반투명 효과 없음.
+  // 손전등은 오직 시야 반경만 확대한다.
   {
-    const cx=vw/2,cy=vh/2;
+    const cx=vw/2;
+    const cy=vh/2;
+
     const radius=expeditionFlashlight
-      ? Math.min(vw,vh)*.62
-      : Math.min(vw,vh)*.40;
+      ? Math.min(vw,vh)*0.58
+      : Math.min(vw,vh)*0.34;
 
     exctx.save();
 
-    // 시야 밖도 완전 검정이 아니라 구조가 희미하게 보이도록
-    exctx.fillStyle="rgba(0,0,0,.56)";
+    // 화면 전체를 완전 검정으로 덮는다.
+    exctx.fillStyle="#000";
     exctx.fillRect(0,0,vw,vh);
 
+    // 플레이어 중심의 딱 끊기는 원형 영역만 다시 보이게 한다.
     exctx.globalCompositeOperation="destination-out";
-
-    const vision=exctx.createRadialGradient(
-      cx,cy,radius*.14,
-      cx,cy,radius
-    );
-    vision.addColorStop(0,"rgba(0,0,0,1)");
-    vision.addColorStop(.62,"rgba(0,0,0,.98)");
-    vision.addColorStop(.86,"rgba(0,0,0,.70)");
-    vision.addColorStop(1,"rgba(0,0,0,0)");
-
-    exctx.fillStyle=vision;
+    exctx.fillStyle="#000";
     exctx.beginPath();
     exctx.arc(cx,cy,radius,0,Math.PI*2);
     exctx.fill();
