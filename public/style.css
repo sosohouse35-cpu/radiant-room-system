@@ -1393,3 +1393,20 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
 }
 
 /* VERSION 31 - Neon PostgreSQL persistent accounts */
+
+/* VERSION 32 */
+.v32-system-hud{position:fixed;top:54px;left:50%;transform:translateX(-50%);z-index:125;display:flex;gap:8px;padding:6px 9px;background:rgba(8,12,10,.82);border:1px solid #66705f;font-size:12px;font-weight:900;pointer-events:none}
+.v32-modal{position:fixed;inset:0;z-index:230;display:grid;place-items:center;background:rgba(0,0,0,.72)}
+.v32-card{width:min(430px,calc(100vw - 28px));padding:18px;background:#171d19;border:1px solid #718068;box-shadow:0 15px 60px #000}
+.generator-track{height:34px;position:relative;background:#303733;margin:18px 0;border:1px solid #808980;overflow:hidden}
+#generatorTarget{position:absolute;top:0;bottom:0;background:rgba(130,255,120,.28)}
+#generatorCursor{position:absolute;top:0;bottom:0;width:5px;background:#fff}
+.fw-seq,.fw-answer{min-height:40px;padding:10px;margin:8px 0;background:#0b0f0c;font-size:24px;letter-spacing:10px;text-align:center}
+.fw-buttons{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.fw-buttons button{min-height:52px;font-size:22px}
+.sleep-overlay{position:fixed;inset:0;z-index:400;background:#000;overflow:hidden}
+.sleep-dream{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:48px}
+.sleep-cloud{font-size:90px;filter:grayscale(1);opacity:.82}.sleep-cloud.right{transform:scale(.8)}
+.sleep-sheep{font-size:72px;position:relative}.sleep-sheep.jump{animation:sheepJumpV32 2.1s ease-in-out}
+.sleep-text{position:absolute;bottom:12%;color:#ddd;font-size:20px}
+@keyframes sheepJumpV32{0%{transform:translate(-160px,80px) rotate(-8deg)}45%{transform:translate(0,-120px) rotate(5deg)}100%{transform:translate(160px,70px) rotate(8deg)}}
+@media(max-width:760px){.v32-system-hud{top:44px;font-size:10px}.sleep-cloud{font-size:55px}.sleep-sheep{font-size:48px}}
