@@ -26,8 +26,8 @@ const EXPEDITION_INVITE_MS=15000;
 // v16 bunker survival
 const STAT_TICK_MS=10000;
 const DAMAGE_TICK_MS=3000;
-const VENT_MIN_DELAY_MS=50000;
-const VENT_MAX_DELAY_MS=100000;
+const VENT_MIN_DELAY_MS=120000;
+const VENT_MAX_DELAY_MS=240000;
 const VENT_STAGE_MS=30000;
 
 const DEFS={
@@ -533,7 +533,9 @@ function makeHospitalAbomination(){
     patrolX:1150,
     patrolY:420,
     nextPatrolAt:0,
-    state:"patrol"
+    state:"patrol",
+    patrolPhase:"center",
+    nextPatrolChoiceAt:Date.now()+10000
   };
 }
 
@@ -2024,13 +2026,41 @@ setInterval(()=>{
 },5000);
 
 // =========================================================
+
+const HOSPITAL_PATROL_CENTER_V28={x:1150,y:700};
+
+const HOSPITAL_PATROL_ENDS_V28=[
+  {id:"left",x:235,y:690},
+  {id:"top",x:1150,y:155},
+  {id:"right",x:2070,y:690}
+];
+
+function hospitalPatrolDestinationV28(a){
+  if(a.patrolPhase!=="end"){
+    const target=pick(HOSPITAL_PATROL_ENDS_V28);
+    a.patrolPhase="end";
+    return {x:target.x,y:target.y,id:target.id};
+  }
+
+  a.patrolPhase="center";
+  return {
+    x:HOSPITAL_PATROL_CENTER_V28.x,
+    y:HOSPITAL_PATROL_CENTER_V28.y,
+    id:"center"
+  };
+}
+
 // Hospital Abomination AI
-// 평상시 무작위 순찰 -> 소리 감지 시 고속 추격 -> 접촉 시 즉사
+// 중앙 -> 왼쪽/위/오른쪽 끝 중 랜덤 -> 중앙 반복.
+// 평상시 이동속도는 플레이어와 비슷하고, 약 10초마다 다음 목적지를 결정.
+// 소리 감지 시에만 고속 추격, 접촉 시 즉사.
+// =========================================================
 setInterval(()=>{
   const now=Date.now();
 
   for(const r of rooms.values()){
     if(r.expeditionLocation!=="hospital")continue;
+
     const a=r.hospitalAbomination;
     if(!a)continue;
 
@@ -2046,20 +2076,43 @@ setInterval(()=>{
 
     if(chasing){
       a.state="chase";
-      moveHospitalAbominationV26(a,a.targetX,a.targetY,22);
+
+      moveHospitalAbominationV26(
+        a,
+        a.targetX,
+        a.targetY,
+        22
+      );
     }else{
       a.state="patrol";
       a.targetX=null;
       a.targetY=null;
 
-      if(now>=a.nextPatrolAt || Math.hypot(a.patrolX-a.x,a.patrolY-a.y)<25){
-        const pt=chooseHospitalPatrolPointV26();
-        a.patrolX=pt.x;
-        a.patrolY=pt.y;
-        a.nextPatrolAt=now+3500+Math.floor(Math.random()*3500);
+      if(a.patrolX==null||a.patrolY==null){
+        a.patrolX=HOSPITAL_PATROL_CENTER_V28.x;
+        a.patrolY=HOSPITAL_PATROL_CENTER_V28.y;
+        a.nextPatrolChoiceAt=now+10000;
+        a.patrolPhase="center";
       }
 
-      moveHospitalAbominationV26(a,a.patrolX,a.patrolY,3.2);
+      const reached=Math.hypot(
+        a.patrolX-a.x,
+        a.patrolY-a.y
+      )<28;
+
+      if(reached && now>=(a.nextPatrolChoiceAt||0)){
+        const next=hospitalPatrolDestinationV28(a);
+        a.patrolX=next.x;
+        a.patrolY=next.y;
+        a.nextPatrolChoiceAt=now+10000;
+      }
+
+      moveHospitalAbominationV26(
+        a,
+        a.patrolX,
+        a.patrolY,
+        3.2
+      );
     }
 
     for(const p of explorers){
@@ -2085,7 +2138,8 @@ setInterval(()=>{
       x:a.x,
       y:a.y,
       alerted:a.state==="chase",
-      state:a.state
+      state:a.state,
+      patrolPhase:a.patrolPhase
     });
   }
 },120);
