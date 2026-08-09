@@ -538,8 +538,8 @@ function makeHospitalItems(){
 function makeHospitalAbomination(){
   return {
     id:`hospital-abomination-${Date.now()}`,
-    x:1150,
-    y:420,
+    x:1207.5,
+    y:1132.5,
     targetX:null,
     targetY:null,
     alertedUntil:0,
@@ -548,8 +548,8 @@ function makeHospitalAbomination(){
     attackWindupUntil:0,
     attacking:false,
     attackTargetId:null,
-    patrolX:1150,
-    patrolY:420,
+    patrolX:1207.5,
+    patrolY:1132.5,
     nextPatrolAt:0,
     state:"patrol",
     patrolPhase:"center",
@@ -559,7 +559,7 @@ function makeHospitalAbomination(){
 
 function expeditionReturnPoint(room){
   return room.expeditionLocation==="hospital"
-    ? {x:1660,y:1570}
+    ? {x:1897.5,y:2572.5}
     : {x:250,y:850};
 }
 
@@ -591,7 +591,7 @@ function hospitalWalkableV26(x,y,radius=16){
   );
 }
 
-function clampHospitalMoveV26(x,y,oldX,oldY,radius=16){
+function clampHospitalMoveV30(x,y,oldX,oldY,radius=16){
   if(hospitalWalkableV26(x,y,radius))return {x,y};
   if(hospitalWalkableV26(x,oldY,radius))return {x,y:oldY};
   if(hospitalWalkableV26(oldX,y,radius))return {x:oldX,y};
@@ -611,15 +611,25 @@ function moveHospitalAbominationV26(a,targetX,targetY,speed){
   const dx=targetX-a.x,dy=targetY-a.y;
   const dist=Math.hypot(dx,dy);
   if(dist<3)return;
+
   const ux=dx/(dist||1),uy=dy/(dist||1);
-  const tries=[[ux,uy],[ux,0],[0,uy],[-uy,ux],[uy,-ux]];
+  const tries=[
+    [ux,uy],[ux,0],[0,uy],
+    [-uy,ux],[uy,-ux],
+    [-uy*.65,ux*.65],[uy*.65,-ux*.65]
+  ];
+
   for(const [mx,my] of tries){
-    const n=clampHospitalMoveV26(a.x+mx*speed,a.y+my*speed,a.x,a.y,18);
-    if(n.x!==a.x||n.y!==a.y){a.x=n.x;a.y=n.y;return;}
+    const n=clampHospitalMoveV30(
+      a.x+mx*speed,
+      a.y+my*speed,
+      a.x,a.y,14
+    );
+    if(n.x!==a.x||n.y!==a.y){
+      a.x=n.x;a.y=n.y;
+      return;
+    }
   }
-  const pt=chooseHospitalPatrolPointV26();
-  a.patrolX=pt.x;a.patrolY=pt.y;
-  a.targetX=null;a.targetY=null;a.alertedUntil=0;
 }
 const HOSPITAL_WALLS_SERVER=[
   // outer world bounds
@@ -727,6 +737,53 @@ function moveHospitalAbomination(a,targetX,targetY,speed){
   a.targetX=null;
   a.targetY=null;
   a.alertedUntil=0;
+}
+
+// =========================================================
+// V30 HOSPITAL COLLISION MAP
+// User-provided image: white = walkable, black = blocked.
+// The accidental black line next to START is explicitly opened.
+// =========================================================
+const HOSPITAL_V30_W=2400;
+const HOSPITAL_V30_H=2820;
+const HOSPITAL_V30_GRID_W=160;
+const HOSPITAL_V30_GRID_H=188;
+const HOSPITAL_V30_RUNS=[[],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[36,120]],[[72,88]],[[1,19],[72,87]],[[1,19],[72,87]],[[1,19],[72,87]],[[1,19],[72,87]],[[1,19],[72,87]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[70,91],[138,157]],[[1,19],[67,91],[137,157]],[[1,20],[67,91],[137,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,157]],[[1,93],[137,157]],[[1,20],[64,93],[137,157]],[[1,19],[67,93],[137,157]],[[1,19],[67,93],[138,157]],[[1,19],[72,93],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,157]],[[1,19],[72,87],[138,158]],[[1,19],[72,87],[138,158]],[[1,19],[72,87],[138,158]],[[1,19],[72,87],[138,158]],[[1,19],[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,87],[138,158]],[[72,88],[138,158]],[[72,158]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[72,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[129,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[117,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[112,144]],[[113,144]],[]];
+
+function hospitalWalkableV30(x,y,radius=12){
+  const pts=[
+    [x-radius,y-radius],[x+radius,y-radius],
+    [x-radius,y+radius],[x+radius,y+radius],
+    [x,y]
+  ];
+
+  for(const [px,py] of pts){
+    if(px<0||py<0||px>=HOSPITAL_V30_W||py>=HOSPITAL_V30_H)return false;
+    const gx=Math.max(0,Math.min(
+      HOSPITAL_V30_GRID_W-1,
+      Math.floor(px/HOSPITAL_V30_W*HOSPITAL_V30_GRID_W)
+    ));
+    const gy=Math.max(0,Math.min(
+      HOSPITAL_V30_GRID_H-1,
+      Math.floor(py/HOSPITAL_V30_H*HOSPITAL_V30_GRID_H)
+    ));
+
+    const runs=HOSPITAL_V30_RUNS[gy]||[];
+    let ok=false;
+    for(const r of runs){
+      if(gx>=r[0]&&gx<=r[1]){ok=true;break;}
+    }
+    if(!ok)return false;
+  }
+
+  return true;
+}
+
+function clampHospitalMoveV30(x,y,oldX,oldY,radius=12){
+  if(hospitalWalkableV30(x,y,radius))return {x,y};
+  if(hospitalWalkableV30(x,oldY,radius))return {x,y:oldY};
+  if(hospitalWalkableV30(oldX,y,radius))return {x:oldX,y};
+  return {x:oldX,y:oldY};
 }
 io.on("connection",s=>{
  s.on("get-public-party-list",(lobbyId,cb=()=>{})=>{
@@ -1255,7 +1312,7 @@ io.on("connection",s=>{
   const prevX=p.expeditionX,prevY=p.expeditionY;
 
   if(r.expeditionLocation==="hospital"){
-    const n=clampHospitalMoveV26(x,y,p.expeditionX,p.expeditionY,15);
+    const n=clampHospitalMoveV30(x,y,p.expeditionX,p.expeditionY,15);
     p.expeditionX=n.x;
     p.expeditionY=n.y;
   }else{
@@ -2048,9 +2105,9 @@ setInterval(()=>{
 const HOSPITAL_PATROL_CENTER_V28={x:1150,y:700};
 
 const HOSPITAL_PATROL_ENDS_V28=[
-  {id:"left",x:235,y:690},
-  {id:"top",x:1150,y:155},
-  {id:"right",x:2070,y:690}
+  {id:"left",x:292.5,y:1072.5},
+  {id:"top",x:1207.5,y:232.5},
+  {id:"right",x:2122.5,y:1072.5}
 ];
 
 function hospitalPatrolDestinationV28(a){
