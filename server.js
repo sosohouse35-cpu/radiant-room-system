@@ -346,15 +346,27 @@ function ventPublicState(room){
     id:v.id,
     closed:v.closed,
     threat:v.threat,
-    stage:v.stage
+    stage:v.stage,
+    nextEventAt:v.nextEventAt||0
   }));
 }
 
-function scheduleNextVentEvent(room){
-  room.nextVentEventAt=
+function scheduleNextVentEvent(room,vent=null){
+  const next=
     Date.now()+
     VENT_MIN_DELAY_MS+
     Math.floor(Math.random()*(VENT_MAX_DELAY_MS-VENT_MIN_DELAY_MS));
+
+  if(vent){
+    vent.nextEventAt=next;
+  }else{
+    for(const v of room.vents||[]){
+      v.nextEventAt=
+        Date.now()+
+        VENT_MIN_DELAY_MS+
+        Math.floor(Math.random()*(VENT_MAX_DELAY_MS-VENT_MIN_DELAY_MS));
+    }
+  }
 }
 
 function randomStealFromBunker(room){
@@ -403,11 +415,10 @@ function clearVentThreat(room,vent){
   vent.threat=null;
   vent.stage=0;
   vent.nextStageAt=0;
-  scheduleNextVentEvent(room);
+  scheduleNextVentEvent(room,vent);
 
   io.to(room.code).emit("vent-state",{
-    vents:ventPublicState(room),
-    nextVentEventAt:room.nextVentEventAt
+    vents:ventPublicState(room)
   });
 }
 
@@ -472,24 +483,24 @@ function failVentThreat(room,vent){
 
 
 const HOSPITAL_POINTS=[
-  {x:430,y:100},{x:560,y:100},{x:690,y:100},
-  {x:165,y:285},{x:280,y:285},
-  {x:820,y:285},{x:980,y:285},
-  {x:525,y:300},{x:525,y:470},{x:525,y:640},
-  {x:520,y:760},{x:690,y:760},
-  {x:820,y:665},{x:910,y:665},{x:925,y:820}
+  {x:430,y:120},{x:560,y:120},{x:680,y:120},
+  {x:150,y:270},{x:245,y:345},
+  {x:690,y:270},{x:850,y:270},
+  {x:560,y:320},{x:560,y:500},{x:560,y:620},
+  {x:580,y:720},{x:700,y:720},
+  {x:835,y:525},{x:860,y:690},{x:805,y:835}
 ];
 
 const HOSPITAL_GLASS=[
-  {x:315,y:285,r:32},
-  {x:690,y:285,r:30},
-  {x:790,y:660,r:34},
-  {x:530,y:545,r:30}
+  {x:330,y:335,r:30},
+  {x:685,y:335,r:30},
+  {x:820,y:610,r:34},
+  {x:580,y:555,r:30}
 ];
 
 const HOSPITAL_TRIPWIRES=[
-  {x1:455,y1:415,x2:585,y2:415},
-  {x1:770,y1:555,x2:900,y2:555}
+  {x1:300,y1:320,x2:360,y2:320},
+  {x1:740,y1:520,x2:830,y2:520}
 ];
 
 function makeHospitalItems(){
@@ -513,15 +524,15 @@ function makeHospitalItems(){
 function makeHospitalAbomination(){
   return {
     id:`hospital-abomination-${Date.now()}`,
-    x:930,
-    y:180,
+    x:650,
+    y:150,
     targetX:null,
     targetY:null,
     alertedUntil:0,
     lingerUntil:0,
     lastAttackAt:0,
-    patrolX:930,
-    patrolY:180,
+    patrolX:650,
+    patrolY:150,
     nextPatrolAt:0,
     state:"patrol"
   };
@@ -534,28 +545,51 @@ function expeditionReturnPoint(room){
 }
 
 const HOSPITAL_WALLS_SERVER=[
-  {x:0,y:0,w:1200,h:30},{x:0,y:930,w:1200,h:30},
-  {x:0,y:0,w:30,h:960},{x:1170,y:0,w:30,h:960},
+  // outer world bounds
+  {x:0,y:0,w:1200,h:28},{x:0,y:932,w:1200,h:28},
+  {x:0,y:0,w:28,h:960},{x:1172,y:0,w:28,h:960},
 
-  {x:500,y:110,w:30,h:620},
+  // top wide room from sketch
+  {x:360,y:55,w:430,h:22},
+  {x:360,y:55,w:22,h:105},
+  {x:768,y:55,w:22,h:105},
 
-  {x:300,y:70,w:430,h:25},{x:300,y:70,w:25,h:120},{x:705,y:70,w:25,h:120},
+  // central vertical corridor walls
+  {x:500,y:160,w:22,h:500},
+  {x:590,y:160,w:22,h:500},
 
-  {x:90,y:190,w:25,h:430},{x:90,y:190,w:110,h:25},{x:90,y:595,w:110,h:25},
+  // left tall wing
+  {x:95,y:180,w:22,h:400},
+  {x:190,y:180,w:22,h:185},
+  {x:190,y:425,w:22,h:155},
 
-  {x:115,y:300,w:250,h:25},{x:115,y:365,w:250,h:25},
-  {x:365,y:300,w:25,h:20},{x:365,y:370,w:25,h:20},
+  // left connector, doorway intentionally open
+  {x:190,y:300,w:250,h:20},
+  {x:190,y:365,w:205,h:20},
+  {x:430,y:300,w:20,h:30},
+  {x:430,y:355,w:20,h:30},
 
-  {x:530,y:300,w:300,h:25},{x:530,y:365,w:300,h:25},
+  // right connector
+  {x:612,y:300,w:280,h:20},
+  {x:612,y:365,w:280,h:20},
 
-  {x:830,y:205,w:25,h:430},{x:830,y:205,w:115,h:25},{x:920,y:205,w:25,h:430},
+  // right tall wing
+  {x:890,y:195,w:22,h:350},
+  {x:980,y:195,w:22,h:350},
 
-  {x:855,y:565,w:105,h:25},{x:935,y:565,w:25,h:125},
+  // right lower small block
+  {x:890,y:545,w:110,h:20},
+  {x:978,y:545,w:22,h:120},
+  {x:890,y:645,w:110,h:20},
 
-  {x:500,y:665,w:250,h:25},{x:500,y:730,w:250,h:25},
-  {x:750,y:665,w:25,h:65},
+  // lower large horizontal room
+  {x:500,y:660,w:285,h:20},
+  {x:500,y:735,w:285,h:20},
 
-  {x:750,y:730,w:25,h:180},{x:820,y:730,w:25,h:180}
+  // return corridor / start branch
+  {x:785,y:660,w:22,h:235},
+  {x:865,y:735,w:22,h:160},
+  {x:720,y:830,w:65,h:22}
 ];
 
 function hospitalBlockedPoint(x,y,radius=18){
@@ -569,9 +603,15 @@ function hospitalBlockedPoint(x,y,radius=18){
 
 function chooseHospitalPatrolPoint(){
   return pick([
-    {x:390,y:145},{x:170,y:260},{x:280,y:345},
-    {x:585,y:245},{x:735,y:345},{x:875,y:300},
-    {x:880,y:500},{x:650,y:705},{x:800,y:815}
+    {x:620,y:115},
+    {x:535,y:240},
+    {x:535,y:420},
+    {x:535,y:600},
+    {x:280,y:335},
+    {x:740,y:335},
+    {x:935,y:335},
+    {x:650,y:705},
+    {x:830,y:800}
   ]);
 }
 
@@ -582,26 +622,34 @@ function moveHospitalAbomination(a,targetX,targetY,speed){
   if(dist<3)return;
 
   const ux=dx/(dist||1),uy=dy/(dist||1);
-  const nx=a.x+ux*speed;
-  const ny=a.y+uy*speed;
 
-  if(!hospitalBlockedPoint(nx,a.y,18)){
-    a.x=nx;
-  }else if(!hospitalBlockedPoint(a.x,ny,18)){
-    a.y=ny;
-  }else{
-    const sx=a.x-uy*speed;
-    const sy=a.y+ux*speed;
-    if(!hospitalBlockedPoint(sx,sy,18)){
-      a.x=sx;a.y=sy;
-    }else{
-      const ox=a.x+uy*speed;
-      const oy=a.y-ux*speed;
-      if(!hospitalBlockedPoint(ox,oy,18)){
-        a.x=ox;a.y=oy;
-      }
+  const tries=[
+    [ux,uy],
+    [ux,0],
+    [0,uy],
+    [-uy,ux],
+    [uy,-ux],
+    [-uy*.7,ux*.7],
+    [uy*.7,-ux*.7]
+  ];
+
+  for(const [tx,ty] of tries){
+    const nx=a.x+tx*speed;
+    const ny=a.y+ty*speed;
+    if(!hospitalBlockedPoint(nx,ny,16)){
+      a.x=nx;
+      a.y=ny;
+      return;
     }
   }
+
+  // completely stuck: choose a new open patrol point instead of clipping wall
+  const pt=chooseHospitalPatrolPoint();
+  a.patrolX=pt.x;
+  a.patrolY=pt.y;
+  a.targetX=null;
+  a.targetY=null;
+  a.alertedUntil=0;
 }
 io.on("connection",s=>{
  s.on("get-public-party-list",(lobbyId,cb=()=>{})=>{
@@ -714,13 +762,20 @@ io.on("connection",s=>{
     hospitalAbomination:null,
     expeditionItems:[],
     vents:[
-      {id:"ventTop",closed:false,threat:null,stage:0,nextStageAt:0},
-      {id:"ventLeft",closed:false,threat:null,stage:0,nextStageAt:0},
-      {id:"ventBottom",closed:false,threat:null,stage:0,nextStageAt:0}
+      {
+        id:"ventTop",closed:false,threat:null,stage:0,nextStageAt:0,
+        nextEventAt:Date.now()+VENT_MIN_DELAY_MS+Math.floor(Math.random()*(VENT_MAX_DELAY_MS-VENT_MIN_DELAY_MS))
+      },
+      {
+        id:"ventLeft",closed:false,threat:null,stage:0,nextStageAt:0,
+        nextEventAt:Date.now()+VENT_MIN_DELAY_MS+Math.floor(Math.random()*(VENT_MAX_DELAY_MS-VENT_MIN_DELAY_MS))
+      },
+      {
+        id:"ventBottom",closed:false,threat:null,stage:0,nextStageAt:0,
+        nextEventAt:Date.now()+VENT_MIN_DELAY_MS+Math.floor(Math.random()*(VENT_MAX_DELAY_MS-VENT_MIN_DELAY_MS))
+      }
     ],
-    nextVentEventAt:Date.now()+VENT_MIN_DELAY_MS+Math.floor(Math.random()*(VENT_MAX_DELAY_MS-VENT_MIN_DELAY_MS)),
-    bunkerMobs:[],
-    lastVentId:null
+    bunkerMobs:[]
   };
   rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id});emit(r)
  });
@@ -870,13 +925,20 @@ io.on("connection",s=>{
     hospitalAbomination:null,
     expeditionItems:[],
     vents:[
-      {id:"ventTop",closed:false,threat:null,stage:0,nextStageAt:0},
-      {id:"ventLeft",closed:false,threat:null,stage:0,nextStageAt:0},
-      {id:"ventBottom",closed:false,threat:null,stage:0,nextStageAt:0}
+      {
+        id:"ventTop",closed:false,threat:null,stage:0,nextStageAt:0,
+        nextEventAt:Date.now()+VENT_MIN_DELAY_MS+Math.floor(Math.random()*(VENT_MAX_DELAY_MS-VENT_MIN_DELAY_MS))
+      },
+      {
+        id:"ventLeft",closed:false,threat:null,stage:0,nextStageAt:0,
+        nextEventAt:Date.now()+VENT_MIN_DELAY_MS+Math.floor(Math.random()*(VENT_MAX_DELAY_MS-VENT_MIN_DELAY_MS))
+      },
+      {
+        id:"ventBottom",closed:false,threat:null,stage:0,nextStageAt:0,
+        nextEventAt:Date.now()+VENT_MIN_DELAY_MS+Math.floor(Math.random()*(VENT_MAX_DELAY_MS-VENT_MIN_DELAY_MS))
+      }
     ],
-    nextVentEventAt:Date.now()+VENT_MIN_DELAY_MS+Math.floor(Math.random()*(VENT_MAX_DELAY_MS-VENT_MIN_DELAY_MS)),
-    bunkerMobs:[],
-    lastVentId:null});
+    bunkerMobs:[]});
 
   cb({
     ok:true,
@@ -1390,7 +1452,6 @@ io.on("connection",s=>{
   cb({
     ok:true,
     vents:ventPublicState(r),
-    nextVentEventAt:r.nextVentEventAt,
     bunkerMobs:(r.bunkerMobs||[]).filter(m=>m.alive)
   });
  });
@@ -1413,8 +1474,7 @@ io.on("connection",s=>{
     // 위협이 있을 때 닫아도 즉시 사라지지 않는다.
     // 다음 단계 전환 시점에 차단 성공으로 처리한다.
     io.to(r.code).emit("vent-state",{
-      vents:ventPublicState(r),
-      nextVentEventAt:r.nextVentEventAt
+      vents:ventPublicState(r)
     });
 
     return cb({ok:true,closed:vent.closed});
@@ -1710,7 +1770,8 @@ setInterval(()=>{
 
 // =========================================================
 // 랜덤 벤트 사건
-// 종류는 순서가 아니라 매 사건마다 랜덤 선택
+// 세 환풍구는 서로 완전히 독립적으로 이벤트를 생성한다.
+// 최대 3개 환풍구에 동시에 3개 이벤트가 존재할 수 있음.
 // =========================================================
 setInterval(()=>{
   const now=Date.now();
@@ -1718,31 +1779,43 @@ setInterval(()=>{
   for(const r of rooms.values()){
     if(r.status!=="playing")continue;
 
-    const bunkerPlayers=[...r.players.values()].filter(p=>p.inBunker&&(p.hp??0)>0);
+    const bunkerPlayers=[...r.players.values()]
+      .filter(p=>p.inBunker&&(p.hp??0)>0);
+
     if(!bunkerPlayers.length)continue;
 
-    // 활성 위협이 없을 때 랜덤한 시각에 새 사건
-    const active=(r.vents||[]).filter(v=>v.threat);
-
-    if(!active.length && now>=r.nextVentEventAt){
-      const available=(r.vents||[]).filter(v=>!v.closed);
-
-      if(available.length){
-        let candidates=available;
-
-        // 세 환풍구 모두 동일하게 선택 대상.
-        // 직전에 사용한 환풍구만 연속으로 또 뽑히는 현상은 가능하면 피함.
-        if(available.length>1 && r.lastVentId){
-          const withoutLast=available.filter(v=>v.id!==r.lastVentId);
-          if(withoutLast.length)candidates=withoutLast;
+    for(const vent of r.vents||[]){
+      // 위협이 없으면 이 환풍구 전용 타이머로 새 이벤트 발생
+      if(!vent.threat){
+        if(!vent.nextEventAt){
+          scheduleNextVentEvent(r,vent);
         }
 
-        const vent=pick(candidates);
-        r.lastVentId=vent.id;
+        if(now>=vent.nextEventAt){
+          vent.threat=pick(["ventLady","spider","rats","cameraBug"]);
+          vent.stage=1; // 멀리
+          vent.nextStageAt=now+VENT_STAGE_MS;
+          vent.nextEventAt=0;
 
-        // 위협 종류도 순서 없이 매번 랜덤
-        vent.threat=pick(["ventLady","spider","rats","cameraBug"]);
-        vent.stage=1;
+          io.to(r.code).emit("vent-threat",{
+            ventId:vent.id,
+            threat:vent.threat,
+            stage:vent.stage
+          });
+
+          io.to(r.code).emit("vent-state",{
+            vents:ventPublicState(r)
+          });
+        }
+
+        continue;
+      }
+
+      // 멀리 -> 중간, 중간 -> 가까움은 벤트를 닫아도 계속 진행한다.
+      if(now<vent.nextStageAt)continue;
+
+      if(vent.stage<3){
+        vent.stage+=1;
         vent.nextStageAt=now+VENT_STAGE_MS;
 
         io.to(r.code).emit("vent-threat",{
@@ -1752,40 +1825,21 @@ setInterval(()=>{
         });
 
         io.to(r.code).emit("vent-state",{
-          vents:ventPublicState(r),
-          nextVentEventAt:r.nextVentEventAt
+          vents:ventPublicState(r)
         });
-      }else{
-        scheduleNextVentEvent(r);
-      }
-    }
 
-    // 현재 선택된 각 위협은 벤트 안에서 접근
-    for(const vent of r.vents||[]){
-      if(!vent.threat)continue;
-
-      if(vent.closed){
-        if(now>=vent.nextStageAt){
-          clearVentThreat(r,vent);
-        }
         continue;
       }
 
-      if(now>=vent.nextStageAt){
-        vent.stage+=1;
-
-        if(vent.stage>3){
+      // 오직 가까움 -> 침입 시점에서만 닫힘 여부 판정
+      if(vent.stage===3){
+        if(vent.closed){
+          // 침입 직전 차단 성공
+          clearVentThreat(r,vent);
+        }else{
+          // 실제 벙커 침입
           failVentThreat(r,vent);
-          continue;
         }
-
-        vent.nextStageAt=now+VENT_STAGE_MS;
-
-        io.to(r.code).emit("vent-threat",{
-          ventId:vent.id,
-          threat:vent.threat,
-          stage:vent.stage
-        });
       }
     }
   }
