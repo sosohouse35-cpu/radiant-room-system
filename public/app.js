@@ -2486,28 +2486,41 @@ const EX_SOLIDS=[
 
 
 const HOSPITAL_SOLIDS=[
-  {x:0,y:0,w:1200,h:30},{x:0,y:930,w:1200,h:30},
-  {x:0,y:0,w:30,h:960},{x:1170,y:0,w:30,h:960},
+  {x:0,y:0,w:1200,h:28},{x:0,y:932,w:1200,h:28},
+  {x:0,y:0,w:28,h:960},{x:1172,y:0,w:28,h:960},
 
-  {x:500,y:110,w:30,h:620},
+  {x:360,y:55,w:430,h:22},
+  {x:360,y:55,w:22,h:105},
+  {x:768,y:55,w:22,h:105},
 
-  {x:300,y:70,w:430,h:25},{x:300,y:70,w:25,h:120},{x:705,y:70,w:25,h:120},
+  {x:500,y:160,w:22,h:500},
+  {x:590,y:160,w:22,h:500},
 
-  {x:90,y:190,w:25,h:430},{x:90,y:190,w:110,h:25},{x:90,y:595,w:110,h:25},
+  {x:95,y:180,w:22,h:400},
+  {x:190,y:180,w:22,h:185},
+  {x:190,y:425,w:22,h:155},
 
-  {x:115,y:300,w:250,h:25},{x:115,y:365,w:250,h:25},
-  {x:365,y:300,w:25,h:20},{x:365,y:370,w:25,h:20},
+  {x:190,y:300,w:250,h:20},
+  {x:190,y:365,w:205,h:20},
+  {x:430,y:300,w:20,h:30},
+  {x:430,y:355,w:20,h:30},
 
-  {x:530,y:300,w:300,h:25},{x:530,y:365,w:300,h:25},
+  {x:612,y:300,w:280,h:20},
+  {x:612,y:365,w:280,h:20},
 
-  {x:830,y:205,w:25,h:430},{x:830,y:205,w:115,h:25},{x:920,y:205,w:25,h:430},
+  {x:890,y:195,w:22,h:350},
+  {x:980,y:195,w:22,h:350},
 
-  {x:855,y:565,w:105,h:25},{x:935,y:565,w:25,h:125},
+  {x:890,y:545,w:110,h:20},
+  {x:978,y:545,w:22,h:120},
+  {x:890,y:645,w:110,h:20},
 
-  {x:500,y:665,w:250,h:25},{x:500,y:730,w:250,h:25},
-  {x:750,y:665,w:25,h:65},
+  {x:500,y:660,w:285,h:20},
+  {x:500,y:735,w:285,h:20},
 
-  {x:750,y:730,w:25,h:180},{x:820,y:730,w:25,h:180}
+  {x:785,y:660,w:22,h:235},
+  {x:865,y:735,w:22,h:160},
+  {x:720,y:830,w:65,h:22}
 ];
 
 function currentExpeditionSolids(){
@@ -2610,6 +2623,38 @@ function drawExpedition(){
       exctx.strokeRect(r.x-camX,r.y-camY,r.w,r.h);
     });
 
+    // 병원 구조 라벨 / 문: 사용자가 그린 큰 방 + 직선 복도 구조
+    const hospitalLabels=[
+      ["대기실",575,115],
+      ["서쪽 병동",135,365],
+      ["중앙 복도",545,420],
+      ["동쪽 병동",925,350],
+      ["치료실",930,600],
+      ["응급실",650,705],
+      ["출구 복도",825,800]
+    ];
+
+    exctx.fillStyle="rgba(235,240,236,.78)";
+    exctx.font="bold 13px sans-serif";
+    hospitalLabels.forEach(([name,x,y])=>{
+      exctx.fillText(name,x-camX,y-camY);
+    });
+
+    // doorway marks
+    const doors=[
+      {x:430,y:335,w:20,h:40},
+      {x:590,y:335,w:20,h:40},
+      {x:785,y:695,w:22,h:40},
+      {x:785,y:830,w:22,h:45}
+    ];
+
+    doors.forEach(d=>{
+      exctx.fillStyle="#aeb5b1";
+      exctx.fillRect(d.x-camX,d.y-camY,d.w,d.h);
+      exctx.strokeStyle="#343a37";
+      exctx.strokeRect(d.x-camX,d.y-camY,d.w,d.h);
+    });
+
     // 깨진 유리
     hospitalGlass.forEach(g=>{
       const sx=g.x-camX,sy=g.y-camY;
@@ -2709,12 +2754,48 @@ function drawExpedition(){
   Object.values(expeditionOthers).forEach(p=>{
     if(p.id===myId)return;
 
+    let scale=1;
+    let lift=0;
+
+    if(p.jumping && p.jumpUntil){
+      const remaining=Math.max(
+        0,
+        Math.min(1,(p.jumpUntil-performance.now())/520)
+      );
+      const phase=1-remaining;
+      const arc=Math.sin(phase*Math.PI);
+      scale=1+arc*.34;
+      lift=arc*10;
+    }
+
+    const size=30*scale;
+
+    exctx.fillStyle="rgba(0,0,0,.20)";
+    exctx.beginPath();
+    exctx.ellipse(
+      p.x-camX+15,
+      p.y-camY+34,
+      14,
+      5,
+      0,0,Math.PI*2
+    );
+    exctx.fill();
+
     exctx.fillStyle=p.color||"#bbb";
-    exctx.fillRect(p.x-camX,p.y-camY,30,30);
+    exctx.fillRect(
+      p.x-camX+15-size/2,
+      p.y-camY+15-size/2-lift,
+      size,
+      size
+    );
 
     exctx.fillStyle="#eee";
     exctx.font="11px sans-serif";
-    exctx.fillText(p.nickname||"Player",p.x-camX-3,p.y-camY-6);
+    exctx.fillText(
+      p.nickname||"Player",
+      p.x-camX-3,
+      p.y-camY-6-lift
+    );
   });
 
   // 돌연변이
@@ -2792,18 +2873,49 @@ function drawExpedition(){
   });
 
   // 내 캐릭터 중앙
-  const jumpProgress=expeditionJumping
+  // 점프 시 위치만 뜨는 것이 아니라 캐릭터가 커졌다가 원래 크기로 돌아오는 모션.
+  const jumpRemaining=expeditionJumping
     ? Math.max(0,Math.min(1,(expeditionJumpUntil-performance.now())/520))
     : 0;
-  const jumpHeight=expeditionJumping
-    ? Math.sin((1-jumpProgress)*Math.PI)*22
-    : 0;
+
+  const jumpPhase=expeditionJumping ? 1-jumpRemaining : 0;
+  const jumpArc=expeditionJumping ? Math.sin(jumpPhase*Math.PI) : 0;
+
+  // 30px -> 최대 약 40px -> 30px
+  const jumpScale=1+jumpArc*.34;
+  const charSize=30*jumpScale;
+
+  // 크기 변화에 더해 아주 살짝 위로 떠 보이게 함
+  const jumpLift=jumpArc*10;
+
+  // 점프 그림자: 공중에 뜨면 작아지고 흐려짐
+  exctx.fillStyle=`rgba(0,0,0,${0.28-jumpArc*.12})`;
+  exctx.beginPath();
+  exctx.ellipse(
+    vw/2,
+    vh/2+18,
+    15-jumpArc*4,
+    6-jumpArc*2,
+    0,0,Math.PI*2
+  );
+  exctx.fill();
 
   exctx.fillStyle=me.color||"#fff";
-  exctx.fillRect(vw/2-15,vh/2-15-jumpHeight,30,30);
-  exctx.strokeStyle="#fff";
+  exctx.fillRect(
+    vw/2-charSize/2,
+    vh/2-charSize/2-jumpLift,
+    charSize,
+    charSize
+  );
+
+  exctx.strokeStyle="#f5f5f5";
   exctx.lineWidth=2;
-  exctx.strokeRect(vw/2-15,vh/2-15-jumpHeight,30,30);
+  exctx.strokeRect(
+    vw/2-charSize/2,
+    vh/2-charSize/2-jumpLift,
+    charSize,
+    charSize
+  );
 
   // 탐사 무기: 벙커와 동일한 방향/쿨타임/베기 시스템
   if(equippedWeapon){
@@ -2971,17 +3083,17 @@ function drawExpedition(){
 
   // 기본 원형 시야 + 마지막 이동 방향의 손전등 원뿔 시야
   {
-    const radius=Math.min(vw,vh)*.25;
+    const radius=Math.min(vw,vh)*.34;
     const cx=vw/2,cy=vh/2;
 
     exctx.save();
-    exctx.fillStyle="rgba(0,0,0,.965)";
+    exctx.fillStyle="rgba(0,0,0,.82)";
     exctx.fillRect(0,0,vw,vh);
     exctx.globalCompositeOperation="destination-out";
 
     const circle=exctx.createRadialGradient(cx,cy,10,cx,cy,radius);
     circle.addColorStop(0,"rgba(0,0,0,1)");
-    circle.addColorStop(.78,"rgba(0,0,0,.96)");
+    circle.addColorStop(.78,"rgba(0,0,0,.86)");
     circle.addColorStop(1,"rgba(0,0,0,0)");
     exctx.fillStyle=circle;
     exctx.beginPath();
