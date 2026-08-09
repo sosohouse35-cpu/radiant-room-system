@@ -4833,3 +4833,79 @@ document.addEventListener("DOMContentLoaded",()=>{
 if($("firewallStartV322"))$("firewallStartV322").onclick=startFirewallBullethellV322;
 if($("firewallPayHack"))$("firewallPayHack").onclick=payHackerV322;
 if($("firewallCloseV322"))$("firewallCloseV322").onclick=()=>closeV32Modal("firewallPanel");
+
+
+// VERSION 32.3: 상단 전력/Firewall HUD는 사용하지 않음
+function v323HideFloatingSystemHud(){
+  const h=document.getElementById("v32SystemHud");
+  if(h)h.remove();
+}
+v323HideFloatingSystemHud();
+
+// 발전기 상태창은 상호작용했을 때만 갱신
+function v323RefreshGeneratorPanel(){
+  const a=document.getElementById("generatorPowerState");
+  const b=document.getElementById("generatorBatteryState");
+  const c=document.getElementById("generatorStatusState");
+  if(a)a.textContent=`${Math.round(power)}%`;
+  if(b)b.textContent=`${bunkerStock.battery||0}개`;
+  if(c)c.textContent=power<=0?"정전":"정상";
+}
+
+// 기존 발전기 상호작용 함수의 결과 화면을 보강
+const _v323OldOpenGenerator=typeof openGeneratorPanelV32==="function"?openGeneratorPanelV32:null;
+if(_v323OldOpenGenerator){
+  openGeneratorPanelV32=function(){
+    const panel=document.getElementById("generatorPanel");
+    if(panel){
+      v323RefreshGeneratorPanel();
+      document.getElementById("generatorTimingArea")?.classList.add("hidden");
+      panel.classList.remove("hidden");
+      document.body.classList.add("v32-modal-open");
+    }
+  };
+}
+
+function v323CloseModal(id){
+  document.getElementById(id)?.classList.add("hidden");
+  document.body.classList.remove("v32-modal-open");
+}
+
+// 캔버스가 발전기/Firewall 버튼 클릭을 가로채지 못하게 함
+document.addEventListener("click",function(e){
+  const b=e.target.closest("button");
+  if(!b)return;
+
+  if(b.id==="generatorStart"){
+    e.preventDefault();e.stopPropagation();
+    document.getElementById("generatorTimingArea")?.classList.remove("hidden");
+    startGeneratorTimingV32();
+    return;
+  }
+  if(b.id==="generatorBattery"){
+    e.preventDefault();e.stopPropagation();
+    useGeneratorBatteryV32();
+    setTimeout(v323RefreshGeneratorPanel,150);
+    return;
+  }
+  if(b.id==="generatorCloseV323"||b.id==="generatorClose"){
+    e.preventDefault();e.stopPropagation();
+    v323CloseModal("generatorPanel");
+    return;
+  }
+  if(b.id==="firewallStartV322"){
+    e.preventDefault();e.stopPropagation();
+    startFirewallBullethellV322();
+    return;
+  }
+  if(b.id==="firewallPayHack"){
+    e.preventDefault();e.stopPropagation();
+    payHackerV322();
+    return;
+  }
+  if(b.id==="firewallCloseV322"){
+    e.preventDefault();e.stopPropagation();
+    v323CloseModal("firewallPanel");
+    return;
+  }
+},true);
