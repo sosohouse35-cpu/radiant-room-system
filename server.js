@@ -558,6 +558,8 @@ const HOSPITAL_WALKABLE_SERVER_V26=[
   {x:1030,y:560,w:100,h:270},
   {x:1220,y:560,w:100,h:270},
   {x:1730,y:1060,w:140,h:170}
+,
+  {x:1680,y:1460,w:300,h:190}
 ];
 
 function hospitalWalkableV26(x,y,radius=16){
