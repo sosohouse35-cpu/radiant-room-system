@@ -1425,3 +1425,10 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
   pointer-events:auto;
 }
 
+
+/* VERSION 32.2 FIREWALL BULLET HELL */
+.firewall-six{font-size:30px;letter-spacing:5px;text-align:center;color:#7dff9b;margin:12px 0}
+.firewall-card-v322{width:min(620px,calc(100vw - 20px))}
+#firewallCanvasV322{display:block;width:100%;height:min(52vh,420px);background:#050807;border:1px solid #31523a;touch-action:none}
+.fw-progress{height:10px;background:#222;margin:8px 0;overflow:hidden}
+#firewallProgressV322{height:100%;width:0;background:#76ff91}
