@@ -1,5 +1,7 @@
 "use strict";
 const path=require("path");
+const fs=require("fs");
+const crypto=require("crypto");
 const http=require("http");
 const express=require("express");
 const {Server}=require("socket.io");
@@ -8,44 +10,133 @@ app.use(express.static(path.join(__dirname,"public")));
 
 const rooms=new Map(), socketRoom=new Map();
 
-const profiles=new Map();
+
+// =========================================================
+// ACCOUNT / PERSISTENT PROFILE SYSTEM
+// =========================================================
 const V30_EVENT_ACTIVE=true;
-const V30_TEST_MODE=true; // 테스트 중: true면 보상을 반복 수령 가능
 const V30_EVENT_POINTS=100000;
+const NAME_CHANGE_COST=1000;
 
-function cleanProfileId(v){
-  return String(v||"").replace(/[^A-Za-z0-9_-]/g,"").slice(0,80);
+const DATA_DIR=process.env.DATA_DIR || path.join(__dirname,"data");
+const ACCOUNT_FILE=path.join(DATA_DIR,"accounts.json");
+
+const accounts=new Map();
+const authTokens=new Map();
+
+function safeAccountId(v){
+  return String(v||"")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g,"")
+    .slice(0,24);
 }
 
-function getProfile(id){
-  id=cleanProfileId(id);
-  if(!id){
-    id="profile-"+Math.random().toString(36).slice(2)+Date.now().toString(36);
-  }
-
-  if(!profiles.has(id)){
-    profiles.set(id,{
-      id,
-      sanityPoints:0,
-      rainbowUnlocked:false,
-      v30Claimed:false
-    });
-  }
-
-  return profiles.get(id);
+function safeDisplayName(v){
+  return String(v||"")
+    .replace(/[<>]/g,"")
+    .trim()
+    .slice(0,14);
 }
 
-function profileView(p){
+function ensureDataDir(){
+  if(!fs.existsSync(DATA_DIR)){
+    fs.mkdirSync(DATA_DIR,{recursive:true});
+  }
+}
+
+function loadAccounts(){
+  ensureDataDir();
+  if(!fs.existsSync(ACCOUNT_FILE))return;
+
+  try{
+    const raw=JSON.parse(fs.readFileSync(ACCOUNT_FILE,"utf8"));
+    for(const [id,a] of Object.entries(raw||{})){
+      accounts.set(id,{
+        id,
+        passwordHash:String(a.passwordHash||""),
+        passwordSalt:String(a.passwordSalt||""),
+        displayName:safeDisplayName(a.displayName||id)||id,
+        sanityPoints:Math.max(0,Number(a.sanityPoints)||0),
+        rainbowUnlocked:!!a.rainbowUnlocked,
+        v30Claimed:!!a.v30Claimed,
+        createdAt:Number(a.createdAt)||Date.now()
+      });
+    }
+  }catch(err){
+    console.error("[ACCOUNT LOAD ERROR]",err);
+  }
+}
+
+function saveAccounts(){
+  ensureDataDir();
+
+  const obj={};
+  for(const [id,a] of accounts){
+    obj[id]={
+      passwordHash:a.passwordHash,
+      passwordSalt:a.passwordSalt,
+      displayName:a.displayName,
+      sanityPoints:a.sanityPoints,
+      rainbowUnlocked:!!a.rainbowUnlocked,
+      v30Claimed:!!a.v30Claimed,
+      createdAt:a.createdAt
+    };
+  }
+
+  const tmp=ACCOUNT_FILE+".tmp";
+  fs.writeFileSync(tmp,JSON.stringify(obj,null,2),"utf8");
+  fs.renameSync(tmp,ACCOUNT_FILE);
+}
+
+function hashPassword(password,salt){
+  return crypto.scryptSync(String(password||""),salt,64).toString("hex");
+}
+
+function makeToken(){
+  return crypto.randomBytes(32).toString("hex");
+}
+
+function accountView(a){
   return {
-    profileId:p.id,
-    sanityPoints:p.sanityPoints,
-    rainbowUnlocked:!!p.rainbowUnlocked,
-    v30Claimed:!!p.v30Claimed,
+    accountId:a.id,
+    displayName:a.displayName,
+    sanityPoints:a.sanityPoints,
+    rainbowUnlocked:!!a.rainbowUnlocked,
+    v30Claimed:!!a.v30Claimed,
     eventActive:V30_EVENT_ACTIVE,
-    testMode:V30_TEST_MODE
+    nameChangeCost:NAME_CHANGE_COST
   };
 }
 
+function accountFromToken(token){
+  const id=authTokens.get(String(token||""));
+  return id ? accounts.get(id) : null;
+}
+
+function syncAccountToOnlinePlayers(a){
+  for(const room of rooms.values()){
+    for(const p of room.players.values()){
+      if(p.accountId===a.id){
+        p.nickname=a.displayName;
+        p.sanityPoints=a.sanityPoints;
+        p.rainbowUnlocked=!!a.rainbowUnlocked;
+      }
+    }
+  }
+
+  for(const lobby of publicLobbies){
+    for(const p of lobby.players.values()){
+      if(p.accountId===a.id){
+        p.nickname=a.displayName;
+        p.sanityPoints=a.sanityPoints;
+        p.rainbowUnlocked=!!a.rainbowUnlocked;
+      }
+    }
+  }
+}
+
+loadAccounts();
 
 const publicLobbies=Array.from({length:10},(_,i)=>({
   id:i+1,
@@ -96,7 +187,7 @@ const pick=a=>a[Math.floor(Math.random()*a.length)];
 const shuffle=a=>[...a].sort(()=>Math.random()-.5);
 
 function code(){const c="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s;do{s=Array.from({length:6},()=>c[Math.floor(Math.random()*c.length)]).join("")}while(rooms.has(s));return s}
-function view(r){return {code:r.code,name:r.name,publicLobbyId:r.publicLobbyId,private:r.private,maxPlayers:r.maxPlayers,hostId:r.hostId,status:r.status,players:[...r.players.values()].map(p=>({id:p.id,nickname:p.nickname,ready:p.ready,color:p.color,sanityPoints:p.sanityPoints||0,rainbowUnlocked:!!p.rainbowUnlocked}))}}
+function view(r){return {code:r.code,name:r.name,publicLobbyId:r.publicLobbyId,private:r.private,maxPlayers:r.maxPlayers,hostId:r.hostId,status:r.status,players:[...r.players.values()].map(p=>({id:p.id,nickname:p.nickname,ready:p.ready,color:p.color,sanityPoints:p.sanityPoints||0,rainbowUnlocked:!!p.rainbowUnlocked,accountId:p.accountId||""}))}}
 function list(){return [...rooms.values()].filter(r=>r.status==="waiting").map(r=>({code:r.code,name:r.name,playerCount:r.players.size,maxPlayers:r.maxPlayers}))}
 function emit(r){io.to(r.code).emit("room-updated",view(r));io.emit("room-list",list());if(r.publicLobbyId)emitPublicParties(r.publicLobbyId)}
 function slots(p){return p.hands.reduce((s,t)=>s+(DEFS[t]?.slots||1),0)}
@@ -134,16 +225,19 @@ function leave(s){
  }
  if(r.hostId===s.id){r.hostId=r.players.keys().next().value;r.players.get(r.hostId).ready=true} emit(r)
 }
-function join(s,r,name,cb,preferredColor,preferredSessionId,profileId){
+function join(s,r,name,cb,preferredColor,preferredSessionId,token){
  if(r.status!=="waiting")return cb({ok:false,message:"이미 시작됨"});
  if(r.players.size>=r.maxPlayers)return cb({ok:false,message:"방이 가득 참"});
  name=String(name||"").trim().slice(0,14);if(!name)return cb({ok:false,message:"닉네임 입력"});
- const profile=getProfile(profileId);
+ const account=accountFromToken(token);
+ if(!account)return cb({ok:false,message:"로그인이 필요합니다."});
+ name=account.displayName;
+
  const used=new Set([...r.players.values()].map(p=>p.color));
  let color=String(preferredColor||"");
 
  if(color==="rainbow"){
-   if(!profile.rainbowUnlocked)color="";
+   if(!account.rainbowUnlocked)color="";
  }else if(!COLORS.includes(color)){
    color="";
  }
@@ -154,7 +248,7 @@ function join(s,r,name,cb,preferredColor,preferredSessionId,profileId){
  }
 
  const p={id:s.id,nickname:name,sessionId:String(preferredSessionId||""),ready:false,color,
-   profileId:profile.id,sanityPoints:profile.sanityPoints,rainbowUnlocked:profile.rainbowUnlocked,
+   accountId:account.id,sanityPoints:account.sanityPoints,rainbowUnlocked:account.rainbowUnlocked,
    floor:1,x:1180,y:980,hands:[],stored:[],bunkerX:330,bunkerY:560,inBunker:false,
    hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,equipped:null,
    facingX:1,facingY:0,lastWeaponSwingAt:0,nextHallucinationAt:0,sick:false,jumping:false,
@@ -163,7 +257,7 @@ function join(s,r,name,cb,preferredColor,preferredSessionId,profileId){
  r.players.set(s.id,p);
  socketRoom.set(s.id,r.code);
  s.join(r.code);
- cb({ok:true,room:view(r),myId:s.id,profile:profileView(profile)});
+ cb({ok:true,room:view(r),myId:s.id,account:accountView(account)});
  emit(r)
 }
 
@@ -847,57 +941,99 @@ function clampHospitalMoveV30(x,y,oldX,oldY,radius=12){
 }
 io.on("connection",s=>{
 
- s.on("get-profile",(d={},cb=()=>{})=>{
-  const p=getProfile(d?.profileId);
-  cb({ok:true,profile:profileView(p)});
+ s.on("register-account",(d={},cb=()=>{})=>{
+  const accountId=safeAccountId(d?.accountId);
+  const password=String(d?.password||"");
+  const displayName=safeDisplayName(d?.displayName);
+
+  if(accountId.length<4)return cb({ok:false,message:"아이디는 4자 이상이어야 합니다."});
+  if(password.length<6)return cb({ok:false,message:"비밀번호는 6자 이상이어야 합니다."});
+  if(!displayName)return cb({ok:false,message:"처음 사용할 이름을 입력하세요."});
+  if(accounts.has(accountId))return cb({ok:false,message:"이미 사용 중인 아이디입니다."});
+
+  const salt=crypto.randomBytes(16).toString("hex");
+  const a={
+    id:accountId,
+    passwordSalt:salt,
+    passwordHash:hashPassword(password,salt),
+    displayName,
+    sanityPoints:0,
+    rainbowUnlocked:false,
+    v30Claimed:false,
+    createdAt:Date.now()
+  };
+
+  accounts.set(accountId,a);
+  saveAccounts();
+
+  const token=makeToken();
+  authTokens.set(token,a.id);
+
+  cb({ok:true,token,account:accountView(a)});
  });
 
- s.on("claim-v30-event",(d={},cb=()=>{})=>{
-  const p=getProfile(d?.profileId);
+ s.on("login-account",(d={},cb=()=>{})=>{
+  const accountId=safeAccountId(d?.accountId);
+  const password=String(d?.password||"");
+  const a=accounts.get(accountId);
 
-  if(!V30_EVENT_ACTIVE){
-    return cb({ok:false,message:"VERSION 30 이벤트가 종료되었습니다.",profile:profileView(p)});
+  if(!a)return cb({ok:false,message:"아이디 또는 비밀번호가 올바르지 않습니다."});
+
+  const hash=hashPassword(password,a.passwordSalt);
+  const good=
+    hash.length===a.passwordHash.length &&
+    crypto.timingSafeEqual(Buffer.from(hash,"hex"),Buffer.from(a.passwordHash,"hex"));
+
+  if(!good)return cb({ok:false,message:"아이디 또는 비밀번호가 올바르지 않습니다."});
+
+  const token=makeToken();
+  authTokens.set(token,a.id);
+
+  cb({ok:true,token,account:accountView(a)});
+ });
+
+ s.on("resume-account",(d={},cb=()=>{})=>{
+  const a=accountFromToken(d?.token);
+  if(!a)return cb({ok:false});
+  cb({ok:true,account:accountView(a)});
+ });
+
+ s.on("change-display-name",(d={},cb=()=>{})=>{
+  const a=accountFromToken(d?.token);
+  if(!a)return cb({ok:false,message:"로그인이 필요합니다."});
+
+  const newName=safeDisplayName(d?.displayName);
+  if(!newName)return cb({ok:false,message:"새 이름을 입력하세요."});
+  if(newName===a.displayName)return cb({ok:false,message:"현재 이름과 같습니다."});
+  if(a.sanityPoints<NAME_CHANGE_COST){
+    return cb({ok:false,message:`이름 변경에는 ${NAME_CHANGE_COST.toLocaleString()} SP가 필요합니다.`});
   }
 
-  if(p.v30Claimed && !V30_TEST_MODE){
-    return cb({
-      ok:false,
-      alreadyClaimed:true,
-      message:"이미 보상을 받았습니다.",
-      profile:profileView(p)
-    });
-  }
+  a.sanityPoints-=NAME_CHANGE_COST;
+  a.displayName=newName;
+  saveAccounts();
+  syncAccountToOnlinePlayers(a);
 
-  p.v30Claimed=true;
+  cb({ok:true,account:accountView(a),message:"이름을 변경했습니다."});
+ });
 
-  // 테스트 모드에서는 버튼을 누를 때마다 100,000 SP를 다시 지급.
-  // 운영 전 V30_TEST_MODE=false 로 변경하면 1회 수령으로 복귀.
-  p.sanityPoints+=V30_EVENT_POINTS;
-  p.rainbowUnlocked=true;
+ s.on("claim-v30-event-account",(d={},cb=()=>{})=>{
+  const a=accountFromToken(d?.token);
+  if(!a)return cb({ok:false,message:"로그인이 필요합니다."});
+  if(!V30_EVENT_ACTIVE)return cb({ok:false,message:"VERSION 30 이벤트가 종료되었습니다.",account:accountView(a)});
+  if(a.v30Claimed)return cb({ok:false,alreadyClaimed:true,message:"이미 보상을 받았습니다.",account:accountView(a)});
 
-  // 같은 프로필로 현재 접속 중인 캐릭터도 즉시 갱신
-  for(const room of rooms.values()){
-    for(const player of room.players.values()){
-      if(player.profileId===p.id){
-        player.sanityPoints=p.sanityPoints;
-        player.rainbowUnlocked=true;
-      }
-    }
-  }
+  a.v30Claimed=true;
+  a.sanityPoints+=V30_EVENT_POINTS;
+  a.rainbowUnlocked=true;
 
-  for(const lobby of publicLobbies){
-    for(const player of lobby.players.values()){
-      if(player.profileId===p.id){
-        player.sanityPoints=p.sanityPoints;
-        player.rainbowUnlocked=true;
-      }
-    }
-  }
+  saveAccounts();
+  syncAccountToOnlinePlayers(a);
 
   cb({
     ok:true,
-    message:"VERSION 30 보상 획득!",
-    profile:profileView(p)
+    message:"100,000 SP와 무지개 캐릭터를 받았습니다!",
+    account:accountView(a)
   });
  });
 
@@ -914,12 +1050,14 @@ io.on("connection",s=>{
   leavePublicLobby(s);
 
   const lobbyId=Math.max(1,Math.min(10,parseInt(d?.lobbyId)||1));
-  const nickname=String(d?.nickname||"").replace(/[<>]/g,"").trim().slice(0,14);
-  const profile=getProfile(d?.profileId);
+  const account=accountFromToken(d?.token);
+  if(!account)return cb({ok:false,message:"로그인이 필요합니다."});
+
+  const nickname=account.displayName;
   let color=String(d?.color||COLORS[0]).slice(0,20);
 
   if(color==="rainbow"){
-    if(!profile.rainbowUnlocked)color=COLORS[0];
+    if(!account.rainbowUnlocked)color=COLORS[0];
   }else if(!COLORS.includes(color)){
     color=COLORS[0];
   }
@@ -931,9 +1069,9 @@ io.on("connection",s=>{
 
   const p={
     id:s.id,nickname,color,
-    profileId:profile.id,
-    sanityPoints:profile.sanityPoints,
-    rainbowUnlocked:profile.rainbowUnlocked,
+    accountId:account.id,
+    sanityPoints:account.sanityPoints,
+    rainbowUnlocked:account.rainbowUnlocked,
     x:500+Math.random()*250,
     y:400+Math.random()*180
   };
@@ -941,7 +1079,7 @@ io.on("connection",s=>{
   socketLobby.set(s.id,lobbyId);
   s.join(`public-lobby-${lobbyId}`);
 
-  cb({ok:true,myId:s.id,lobby:lobbyView(lobby),messages:lobby.messages.slice(-100),profile:profileView(profile)});
+  cb({ok:true,myId:s.id,lobby:lobbyView(lobby),messages:lobby.messages.slice(-100),account:accountView(account)});
   s.to(`public-lobby-${lobbyId}`).emit("public-lobby-player-joined",p);
   emitLobbyList();
  });
@@ -986,24 +1124,26 @@ io.on("connection",s=>{
  s.emit("room-list",list());
  s.on("create-room",(d,cb=()=>{})=>{
   const originLobbyId=socketLobby.get(s.id)||parseInt(d?.publicLobbyId)||null;
-  const profile=getProfile(d?.profileId);
+  const account=accountFromToken(d?.token);
+  if(!account)return cb({ok:false,message:"로그인이 필요합니다."});
+
   let chosenColor=String(d?.color||COLORS[0]);
 
   if(chosenColor==="rainbow"){
-    if(!profile.rainbowUnlocked)chosenColor=COLORS[0];
+    if(!account.rainbowUnlocked)chosenColor=COLORS[0];
   }else if(!COLORS.includes(chosenColor)){
     chosenColor=COLORS[0];
   }
 
   const c=code(),p={
     id:s.id,
-    nickname:String(d.nickname||"").trim().slice(0,14),
+    nickname:account.displayName,
     sessionId:String(d.sessionId||""),
     ready:true,
     color:chosenColor,
-    profileId:profile.id,
-    sanityPoints:profile.sanityPoints,
-    rainbowUnlocked:profile.rainbowUnlocked,
+    accountId:account.id,
+    sanityPoints:account.sanityPoints,
+    rainbowUnlocked:account.rainbowUnlocked,
     floor:1,x:1180,y:980,hands:[],stored:[],
     bunkerX:330,bunkerY:560,inBunker:false,
     hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,
@@ -1053,7 +1193,7 @@ io.on("connection",s=>{
     ],
     bunkerMobs:[]
   };
-  rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id,profile:profileView(profile)});emit(r)
+  rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id,account:accountView(account)});emit(r)
  });
  s.on("join-room",(d,cb=()=>{})=>{
   const requestedLobby=parseInt(d?.publicLobbyId)||null;
@@ -1062,7 +1202,7 @@ io.on("connection",s=>{
   if(requestedLobby && r.publicLobbyId && r.publicLobbyId!==requestedLobby){
     return cb({ok:false,message:"현재 로비의 파티가 아닙니다."});
   }
-  join(s,r,d.nickname,(result)=>{ if(result?.ok)emitPublicParties(requestedLobby||r.publicLobbyId); cb(result); },d.color,d.sessionId,d.profileId)
+  join(s,r,d.nickname,(result)=>{ if(result?.ok)emitPublicParties(requestedLobby||r.publicLobbyId); cb(result); },d.color,d.sessionId,d.token)
  });
  s.on("toggle-ready",(cb=()=>{})=>{const r=rooms.get(socketRoom.get(s.id));if(!r)return cb({ok:false});if(r.hostId===s.id)return cb({ok:false});const p=r.players.get(s.id);p.ready=!p.ready;cb({ok:true});emit(r)});
  s.on("start-game",(cb=()=>{})=>{
