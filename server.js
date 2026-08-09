@@ -8,6 +8,10 @@ const {Server}=require("socket.io");
 const {Pool}=require("pg");
 const app=express(), server=http.createServer(app), io=new Server(server);
 app.use(express.static(path.join(__dirname,"public")));
+app.get("/",(req,res)=>{
+  res.sendFile(path.join(__dirname,"public","index.html"));
+});
+
 
 const rooms=new Map(), socketRoom=new Map();
 
@@ -2484,6 +2488,5 @@ setInterval(()=>{
   }
 },1000);
 
-console.log("[ACCOUNT STORAGE]",ACCOUNT_FILE);
 async function startServer(){try{await initDatabase();server.listen(PORT,()=>console.log(`[VERSION 31] ${PORT}`))}catch(e){console.error("[DB FATAL]",e);process.exit(1)}}
 startServer();
