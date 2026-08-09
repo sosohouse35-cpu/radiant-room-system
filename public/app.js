@@ -7,29 +7,34 @@ const plctx=publicLobbyCanvas?.getContext("2d")||null;
 const canvas=$("canvas");
 const ctx=canvas?.getContext("2d")||null;
 
-var profileIdV30=localStorage.getItem("afterglowProfileId")||"";
-var persistentSanityPoints=Number(localStorage.getItem("afterglowSanityPoints")||0);
-var rainbowUnlockedV30=localStorage.getItem("afterglowRainbowUnlocked")==="1";
-var v30GiftClaimed=localStorage.getItem("afterglowV30Claimed")==="1";
-var v30TestMode=true;
+
+var accountToken=localStorage.getItem("afterglowAccountToken")||"";
+var currentAccount=null;
+var persistentSanityPoints=0;
+var rainbowUnlockedV30=false;
+var v30GiftClaimed=false;
 var v30RainbowPhase=0;
 
-function saveProfileV30(p){
-  if(!p)return;
-  profileIdV30=p.profileId||profileIdV30;
-  persistentSanityPoints=Number(p.sanityPoints||0);
-  rainbowUnlockedV30=!!p.rainbowUnlocked;
-  v30GiftClaimed=!!p.v30Claimed;
-  v30TestMode=!!p.testMode;
+function applyAccount(a){
+  if(!a)return;
 
-  if(profileIdV30)localStorage.setItem("afterglowProfileId",profileIdV30);
-  localStorage.setItem("afterglowSanityPoints",String(persistentSanityPoints));
-  localStorage.setItem("afterglowRainbowUnlocked",rainbowUnlockedV30?"1":"0");
-  localStorage.setItem("afterglowV30Claimed",v30GiftClaimed?"1":"0");
+  currentAccount=a;
+  persistentSanityPoints=Number(a.sanityPoints||0);
+  rainbowUnlockedV30=!!a.rainbowUnlocked;
+  v30GiftClaimed=!!a.v30Claimed;
+
+  if($("nick")){
+    $("nick").value=a.displayName||"";
+    $("nick").readOnly=true;
+  }
+
+  if($("accountNameLabel"))$("accountNameLabel").textContent=a.displayName||"";
+  if($("accountIdLabel"))$("accountIdLabel").textContent=a.accountId||"";
 
   renderPersistentSanityV30();
   renderRainbowOptionV30();
   renderV30ClaimButton();
+  updateAccountUI();
 }
 
 function renderPersistentSanityV30(){
@@ -50,16 +55,16 @@ function renderRainbowOptionV30(){
       btn.dataset.color="rainbow";
       btn.className="rainbow-color-button";
       btn.title="VERSION 30 무지개";
-      host.appendChild(btn);
 
       btn.onclick=()=>{
         selectedColor="rainbow";
         localStorage.setItem("afterglow-color","rainbow");
-
         host.querySelectorAll("[data-color]").forEach(b=>
           b.classList.toggle("selected",b===btn)
         );
       };
+
+      host.appendChild(btn);
     }
   }else if(btn){
     if(selectedColor==="rainbow"){
@@ -77,8 +82,6 @@ function rainbowColorV30(index=0){
     "#00e5ff","#00b0ff","#2979ff","#651fff",
     "#aa00ff","#d500f9","#f500d0","#ff4081"
   ];
-
-  // 약 75ms마다 다음 색으로 넘어가므로 플레이 중 계속 색이 변한다.
   const phase=Math.floor(performance.now()/75);
   return palette[(phase+index)%16];
 }
@@ -95,31 +98,92 @@ function rainbowIndexFromPlayerV30(p,fallback=0){
 
 function animatedPlayerColorV30(color,player=null,index=0){
   if(color!=="rainbow")return color||"#ffffff";
-  return rainbowColorV30(
-    (rainbowIndexFromPlayerV30(player,index)+index)%16
-  );
+  return rainbowColorV30((rainbowIndexFromPlayerV30(player,index)+index)%16);
 }
 
+function updateAccountUI(){
+  const auth=$("authScreen");
+  const home=$("loggedInHome");
 
+  if(currentAccount){
+    auth?.classList.add("hidden");
+    home?.classList.remove("hidden");
+  }else{
+    auth?.classList.remove("hidden");
+    home?.classList.add("hidden");
+  }
+}
 
+function showAuthMode(mode){
+  const loginMode=mode==="login";
+  $("loginFields")?.classList.toggle("hidden",!loginMode);
+  $("registerFields")?.classList.toggle("hidden",loginMode);
+  $("authLoginTab")?.classList.toggle("selected",loginMode);
+  $("authRegisterTab")?.classList.toggle("selected",!loginMode);
+}
+
+function doRegister(){
+  const accountId=$("registerAccountId")?.value.trim();
+  const password=$("registerPassword")?.value||"";
+  const displayName=$("registerName")?.value.trim();
+
+  ioClient.emit("register-account",{accountId,password,displayName},r=>{
+    if(!r?.ok)return toast(r?.message||"회원가입 실패");
+
+    accountToken=r.token;
+    localStorage.setItem("afterglowAccountToken",accountToken);
+    applyAccount(r.account);
+    toast("회원가입 완료");
+  });
+}
+
+function doLogin(){
+  const accountId=$("loginAccountId")?.value.trim();
+  const password=$("loginPassword")?.value||"";
+
+  ioClient.emit("login-account",{accountId,password},r=>{
+    if(!r?.ok)return toast(r?.message||"로그인 실패");
+
+    accountToken=r.token;
+    localStorage.setItem("afterglowAccountToken",accountToken);
+    applyAccount(r.account);
+    toast("로그인 완료");
+  });
+}
+
+function doLogout(){
+  accountToken="";
+  currentAccount=null;
+  localStorage.removeItem("afterglowAccountToken");
+  updateAccountUI();
+  show("home");
+}
+
+function changeAccountName(){
+  if(!currentAccount)return;
+
+  const next=prompt(
+    `새 이름을 입력하세요.\n비용: ${Number(currentAccount.nameChangeCost||1000).toLocaleString()} SP`,
+    currentAccount.displayName||""
+  );
+
+  if(next===null)return;
+
+  ioClient.emit("change-display-name",{token:accountToken,displayName:next},r=>{
+    if(!r?.ok)return toast(r?.message||"이름 변경 실패");
+    applyAccount(r.account);
+    toast("이름 변경 완료 · 1,000 SP 사용");
+  });
+}
 
 function renderV30ClaimButton(){
   const btn=$("v30ClaimButton");
   const text=$("v30ClaimText");
   if(!btn)return;
 
-  if(v30TestMode){
-    btn.disabled=false;
-    btn.classList.remove("claimed");
-    btn.textContent=v30GiftClaimed
-      ? "🧪 테스트 보상 다시 받기"
-      : "🎁 VERSION 30 보상 받기";
-
-    if(text){
-      text.textContent=v30GiftClaimed
-        ? "테스트 모드 · 다시 누르면 100,000 SP를 추가 지급합니다."
-        : "100,000 SP + 계속 색이 변하는 무지개 캐릭터";
-    }
+  if(!currentAccount){
+    btn.disabled=true;
+    btn.textContent="로그인 후 받을 수 있습니다";
     return;
   }
 
@@ -127,49 +191,30 @@ function renderV30ClaimButton(){
     btn.disabled=true;
     btn.classList.add("claimed");
     btn.textContent="✓ VERSION 30 보상 수령 완료";
-    if(text)text.textContent="100,000 SP와 무지개 캐릭터를 획득했습니다.";
+    if(text)text.textContent="계정당 1회 보상을 이미 받았습니다.";
   }else{
     btn.disabled=false;
     btn.classList.remove("claimed");
     btn.textContent="🎁 VERSION 30 보상 받기";
-    if(text)text.textContent="100,000 SP + 계속 색이 변하는 무지개 캐릭터";
+    if(text)text.textContent="계정당 1회 · 100,000 SP + 무지개 캐릭터";
   }
 }
 
 function claimV30Reward(){
-  if(v30GiftClaimed && !v30TestMode){
-    toast("이미 VERSION 30 보상을 받았습니다.");
-    return;
-  }
+  if(!currentAccount)return toast("로그인하세요.");
+  if(v30GiftClaimed)return toast("이미 VERSION 30 보상을 받았습니다.");
 
-  const btn=$("v30ClaimButton");
-  if(btn){
-    btn.disabled=true;
-    btn.textContent="받는 중...";
-  }
-
-  ioClient.emit("claim-v30-event",{profileId:profileIdV30},r=>{
-    if(r?.profile)saveProfileV30(r.profile);
+  ioClient.emit("claim-v30-event-account",{token:accountToken},r=>{
+    if(r?.account)applyAccount(r.account);
 
     if(r?.ok){
-      toast(v30TestMode
-        ? "🧪 테스트 보상 +100,000 SP!"
-        : "🎉 100,000 SP + 무지개 캐릭터 획득!");
       selectedColor="rainbow";
       localStorage.setItem("afterglow-color","rainbow");
       renderRainbowOptionV30();
-
-      const rb=$("colorPicker")?.querySelector('[data-color="rainbow"]');
-      if(rb){
-        $("colorPicker").querySelectorAll("[data-color]").forEach(b=>
-          b.classList.toggle("selected",b===rb)
-        );
-      }
+      toast("🎉 100,000 SP + 무지개 캐릭터 획득!");
     }else{
       toast(r?.message||"보상을 받을 수 없습니다.");
     }
-
-    renderV30ClaimButton();
   });
 }
 
@@ -257,12 +302,10 @@ document.querySelectorAll("#colorPicker [data-color]").forEach(button=>{
 });
 
 function ensureProfile(){
-  const name=$("nick").value.trim();
-  if(!name){
-    toast("닉네임을 입력하세요.");
+  if(!currentAccount){
+    toast("먼저 로그인하세요.");
     return false;
   }
-  localStorage.setItem("afterglow-nickname",name);
   return true;
 }
 
@@ -293,14 +336,14 @@ function joinPublicLobby(lobbyId){
 
   ioClient.emit("join-public-lobby",{
     lobbyId,
-    nickname:$("nick").value.trim(),
+    nickname:currentAccount?.displayName||"",
     color:selectedColor,
-    profileId:profileIdV30
+    token:accountToken
   },r=>{
     if(!r?.ok)return toast(r?.message||"로비 입장 실패");
 
     myId=r.myId;
-    if(r.profile)saveProfileV30(r.profile);
+    if(r.account)applyAccount(r.account);
     currentPublicLobby=r.lobby.id;
     publicLobbyPlayers={};
 
@@ -347,7 +390,7 @@ function renderPartyList(parties){
     const row=document.createElement("div");row.className="party-card";
     const info=document.createElement("div");info.innerHTML=`<b>${p.name}</b><br><small>${p.playerCount}/${p.maxPlayers}</small>`;
     const btn=document.createElement("button");btn.textContent="Join";
-    btn.onclick=()=>ioClient.emit("join-room",{nickname:$("nick").value.trim(),profileId:profileIdV30,code:p.code,color:selectedColor,sessionId,publicLobbyId:currentPublicLobby},joined);
+    btn.onclick=()=>ioClient.emit("join-room",{nickname:currentAccount?.displayName||"",token:accountToken,code:p.code,color:selectedColor,sessionId,publicLobbyId:currentPublicLobby},joined);
     row.append(info,btn);host.appendChild(row);
   });
 }
@@ -359,7 +402,7 @@ $("joinPartyClose").onclick=()=>$("joinPartyPanel").classList.add("hidden");
 $("partyCreateConfirm").onclick=()=>{
   if(!ensureProfile())return;
   const title=$("partyTitle").value.trim();if(!title)return toast("파티 이름을 입력하세요.");
-  ioClient.emit("create-room",{nickname:$("nick").value.trim(),roomName:title,maxPlayers:$("partyMax").value,private:$("partyPrivate").checked,color:selectedColor,sessionId,publicLobbyId:currentPublicLobby},r=>{if(!r?.ok)return toast(r?.message||"파티 생성 실패");$("createPartyPanel").classList.add("hidden");joined(r);});
+  ioClient.emit("create-room",{nickname:currentAccount?.displayName||"",roomName:title,maxPlayers:$("partyMax").value,private:$("partyPrivate").checked,color:selectedColor,sessionId,publicLobbyId:currentPublicLobby},r=>{if(!r?.ok)return toast(r?.message||"파티 생성 실패");$("createPartyPanel").classList.add("hidden");joined(r);});
 };
 
 function joined(r){
@@ -367,7 +410,7 @@ function joined(r){
 
   room=r.room;
   myId=r.myId;
-  if(r.profile)saveProfileV30(r.profile);
+  if(r.account)applyAccount(r.account);
 
   renderLobby();
 
@@ -455,10 +498,22 @@ ioClient.on("room-updated",r=>{
   }
 });
 
-ioClient.on("connect",()=>{ 
-  ioClient.emit("get-profile",{profileId:profileIdV30},r=>{
-    if(r?.ok)saveProfileV30(r.profile);
-  });
+ioClient.on("connect",()=>{
+  if(accountToken){
+    ioClient.emit("resume-account",{token:accountToken},r=>{
+      if(r?.ok){
+        applyAccount(r.account);
+      }else{
+        accountToken="";
+        currentAccount=null;
+        localStorage.removeItem("afterglowAccountToken");
+        updateAccountUI();
+      }
+    });
+  }else{
+    updateAccountUI();
+  }
+
 
   $("status").textContent="연결됨";
 
@@ -644,7 +699,7 @@ function drawPublicLobby(){
   Object.values(publicLobbyPlayers).forEach(p=>{
     if(p.id===myId)return;
 
-    plctx.fillStyle=p.color;
+    plctx.fillStyle=animatedPlayerColorV30(p.color,p);
     plctx.fillRect(p.x-camX,p.y-camY,30,30);
 
     plctx.fillStyle="#fff";
@@ -1009,7 +1064,7 @@ function draw(){
 
   // 다른 플레이어도 같은 공간에 있을 때만 표시
   Object.values(players).filter(playerVisible).forEach(p=>{
-    ctx.fillStyle=p.color;
+    ctx.fillStyle=animatedPlayerColorV30(p.color,p);
     ctx.fillRect(
       p.x-camX,
       p.y-camY,
@@ -1018,7 +1073,7 @@ function draw(){
   });
 
   // 내 캐릭터는 항상 화면 중앙
-  ctx.fillStyle=me.color;
+  ctx.fillStyle=animatedPlayerColorV30(me.color,me);
   ctx.fillRect(
     w/2-P/2,
     h/2-P/2,
@@ -1757,7 +1812,7 @@ function drawBunkerInterior(){
   Object.values(bunkerOthers).forEach(p=>{
     if(p.id===myId)return;
     const sx=p.x-camX, sy=p.y-camY;
-    bctx.fillStyle=p.color||"#ccc";
+    bctx.fillStyle=animatedPlayerColorV30(p.color,p);
     bctx.fillRect(sx,sy,30,30);
     bctx.strokeStyle="#fff";
     bctx.lineWidth=1.5;
@@ -2002,7 +2057,7 @@ function consumeBunker(type){
     type,
     roomCode:room?.code,
     sessionId,
-    nickname:$("nick").value.trim()
+    nickname:currentAccount?.displayName||""
   },r=>{
     if(!r.ok){
       toast(r.message);
@@ -2340,7 +2395,7 @@ function doVentAction(action){
     ventId:selected,
     roomCode:room?.code,
     sessionId,
-    nickname:$("nick").value.trim()
+    nickname:currentAccount?.displayName||""
   },r=>{
     if(!r?.ok){
       toast(r?.message||"처리 실패");
@@ -2513,7 +2568,7 @@ function enterBunkerScene(){
   ioClient.emit("get-vent-state",{
     roomCode:room?.code,
     sessionId,
-    nickname:$("nick").value.trim()
+    nickname:currentAccount?.displayName||""
   },r=>{
     if(!r?.ok)return;
 
@@ -3407,7 +3462,7 @@ function startBunkerJump(){
   ioClient.emit("bunker-jump",{
     roomCode:room?.code,
     sessionId,
-    nickname:$("nick").value.trim()
+    nickname:currentAccount?.displayName||""
   },r=>{
     if(!r?.ok)return;
     bunkerJumping=true;
@@ -3431,7 +3486,7 @@ function startExpeditionJump(){
   ioClient.emit("expedition-jump",{
     roomCode:room?.code,
     sessionId,
-    nickname:$("nick").value.trim()
+    nickname:currentAccount?.displayName||""
   },r=>{
     if(!r?.ok)return;
 
@@ -3632,7 +3687,7 @@ function returnToBunker(){
   ioClient.emit("return-from-expedition",{
     roomCode:room?.code,
     sessionId,
-    nickname:$("nick").value.trim()
+    nickname:currentAccount?.displayName||""
   },r=>{
     if(!r?.ok){
       toast(r?.message||"귀환 실패");
@@ -3692,7 +3747,7 @@ function swingWeapon(){
     ioClient.emit("swing-weapon",{
       roomCode:room?.code,
       sessionId,
-      nickname:$("nick").value.trim(),
+      nickname:currentAccount?.displayName||"",
       facingX:bunkerFacing.x,
       facingY:bunkerFacing.y
     },r=>{
@@ -4346,3 +4401,28 @@ requestAnimationFrame(()=>{
     }
   }
 });
+
+
+if($("authLoginTab"))$("authLoginTab").onclick=()=>showAuthMode("login");
+if($("authRegisterTab"))$("authRegisterTab").onclick=()=>showAuthMode("register");
+if($("loginButton"))$("loginButton").onclick=doLogin;
+if($("registerButton"))$("registerButton").onclick=doRegister;
+if($("logoutButton"))$("logoutButton").onclick=doLogout;
+if($("changeNameButton"))$("changeNameButton").onclick=changeAccountName;
+if($("v30ClaimButton"))$("v30ClaimButton").onclick=claimV30Reward;
+
+function animateRainbowPreviewV30(){
+  const btn=$("colorPicker")?.querySelector('[data-color="rainbow"]');
+  if(btn&&rainbowUnlockedV30){
+    const c1=rainbowColorV30(0);
+    const c2=rainbowColorV30(4);
+    const c3=rainbowColorV30(8);
+    const c4=rainbowColorV30(12);
+    btn.style.background=`linear-gradient(135deg,${c1},${c2},${c3},${c4})`;
+  }
+  requestAnimationFrame(animateRainbowPreviewV30);
+}
+requestAnimationFrame(animateRainbowPreviewV30);
+
+showAuthMode("login");
+updateAccountUI();
