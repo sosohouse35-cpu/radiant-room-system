@@ -5,6 +5,27 @@
 <body><main class="shell">
 <header><h1>AFTERGLOW SHELTER</h1><span id="status">연결 중</span></header>
 <section id="home" class="screen active">
+  <button id="adminSettingsButton" class="admin-settings-button hidden" type="button" title="관리자 설정">⚙</button>
+
+  <div id="adminSettingsPanel" class="admin-settings-panel hidden">
+    <div class="message-head">
+      <strong>ADMIN SETTINGS</strong>
+      <button id="adminSettingsClose" type="button">×</button>
+    </div>
+
+    <label class="admin-toggle">
+      <span>무적</span>
+      <input id="adminGodMode" type="checkbox">
+    </label>
+
+    <label class="admin-toggle">
+      <span>탐사 화면 전체 밝음</span>
+      <input id="adminFullBright" type="checkbox">
+    </label>
+
+    <small>rjsdncjswo1004 계정 전용</small>
+  </div>
+
   <div id="authScreen" class="auth-screen">
     <div class="panel auth-panel">
       <h2>AFTERGLOW ACCOUNT</h2>
