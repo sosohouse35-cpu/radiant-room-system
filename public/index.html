@@ -339,22 +339,21 @@
 </section>
 <dialog id="dlg"><form id="form"><h2>새 방</h2><input id="title" required placeholder="방 제목"><select id="max"><option>1</option><option>2</option><option selected>4</option><option>6</option><option>8</option></select><button>생성</button></form></dialog>
 <div id="toast"></div></main><button id="globalFullscreen" class="global-fullscreen" type="button" aria-label="전체화면">⛶</button><script src="/socket.io/socket.io.js"></script><script src="app.js"></script>
-
-<div id="v32SystemHud" class="v32-system-hud hidden">
-  <span id="v32PowerText">⚡ 100%</span>
-  <span id="v32FirewallText">🛡 100%</span>
-  <span id="v32BatteryText">🔋 ×0</span>
-</div>
-
 <div id="generatorPanel" class="v32-modal hidden">
   <div class="v32-card">
     <h3>⚡ 전력 공급기</h3>
-    <p>타이밍 게임으로 충전하거나 배터리를 사용합니다.</p>
-    <div class="generator-track"><div id="generatorTarget"></div><div id="generatorCursor"></div></div>
-    <button id="generatorHit" type="button">지금!</button>
-    <button id="generatorStart" type="button">타이밍 게임 시작</button>
+    <div class="v323-state">
+      <div>전력 상태 <b id="generatorPowerState">100%</b></div>
+      <div>배터리 <b id="generatorBatteryState">0개</b></div>
+      <div>상태 <b id="generatorStatusState">정상</b></div>
+    </div>
+    <div id="generatorTimingArea" class="hidden">
+      <div class="generator-track"><div id="generatorTarget"></div><div id="generatorCursor"></div></div>
+      <button id="generatorHit" type="button">지금!</button>
+    </div>
+    <button id="generatorStart" type="button">게임 시작</button>
     <button id="generatorBattery" type="button">🔋 배터리 1개 사용</button>
-    <button id="generatorClose" type="button">닫기</button>
+    <button id="generatorCloseV323" type="button">닫기</button>
   </div>
 </div>
 
