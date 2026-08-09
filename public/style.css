@@ -1172,3 +1172,65 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
     font-size:10px;
   }
 }
+
+
+/* VERSION 30 manual reward */
+.v30-claim-card{
+  border:1px solid rgba(214,255,100,.48)!important;
+  text-align:center;
+}
+
+#v30ClaimButton{
+  width:100%;
+  min-height:46px;
+  font-weight:900;
+  background:#344622;
+  color:#efffc9;
+  border:1px solid #8fae52;
+}
+
+#v30ClaimButton.claimed{
+  background:#252a24;
+  color:#90988c;
+  border-color:#4d5549;
+}
+
+.home-sanity{
+  margin-top:12px;
+  padding:8px 10px;
+  text-align:center;
+  font-weight:900;
+  color:#dcff70;
+  background:rgba(13,18,14,.72);
+  border:1px solid rgba(200,255,100,.22);
+}
+
+.rainbow-color-button{
+  position:relative;
+  overflow:hidden;
+  background:linear-gradient(
+    90deg,
+    #ff1744,#ff9100,#ffd600,#76ff03,
+    #00e676,#00e5ff,#2979ff,#651fff,
+    #aa00ff,#f500d0,#ff4081,#ff1744
+  )!important;
+  background-size:400% 100%!important;
+  animation:v30RainbowShift .75s linear infinite;
+}
+
+.rainbow-color-button::after{
+  content:"30";
+  position:absolute;
+  inset:0;
+  display:grid;
+  place-items:center;
+  color:white;
+  font-size:10px;
+  font-weight:1000;
+  text-shadow:0 1px 3px #000;
+}
+
+@keyframes v30RainbowShift{
+  from{background-position:0% 50%}
+  to{background-position:400% 50%}
+}
