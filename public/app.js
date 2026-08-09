@@ -11,6 +11,7 @@ var profileIdV30=localStorage.getItem("afterglowProfileId")||"";
 var persistentSanityPoints=Number(localStorage.getItem("afterglowSanityPoints")||0);
 var rainbowUnlockedV30=localStorage.getItem("afterglowRainbowUnlocked")==="1";
 var v30GiftClaimed=localStorage.getItem("afterglowV30Claimed")==="1";
+var v30TestMode=true;
 var v30RainbowPhase=0;
 
 function saveProfileV30(p){
@@ -19,6 +20,7 @@ function saveProfileV30(p){
   persistentSanityPoints=Number(p.sanityPoints||0);
   rainbowUnlockedV30=!!p.rainbowUnlocked;
   v30GiftClaimed=!!p.v30Claimed;
+  v30TestMode=!!p.testMode;
 
   if(profileIdV30)localStorage.setItem("afterglowProfileId",profileIdV30);
   localStorage.setItem("afterglowSanityPoints",String(persistentSanityPoints));
@@ -81,11 +83,45 @@ function rainbowColorV30(index=0){
   return palette[(phase+index)%16];
 }
 
+function rainbowIndexFromPlayerV30(p,fallback=0){
+  if(!p)return fallback;
+  const text=String(p.id||p.nickname||"");
+  let hash=0;
+  for(let i=0;i<text.length;i++){
+    hash=((hash<<5)-hash+text.charCodeAt(i))|0;
+  }
+  return Math.abs(hash)%16;
+}
+
+function animatedPlayerColorV30(color,player=null,index=0){
+  if(color!=="rainbow")return color||"#ffffff";
+  return rainbowColorV30(
+    (rainbowIndexFromPlayerV30(player,index)+index)%16
+  );
+}
+
+
+
 
 function renderV30ClaimButton(){
   const btn=$("v30ClaimButton");
   const text=$("v30ClaimText");
   if(!btn)return;
+
+  if(v30TestMode){
+    btn.disabled=false;
+    btn.classList.remove("claimed");
+    btn.textContent=v30GiftClaimed
+      ? "🧪 테스트 보상 다시 받기"
+      : "🎁 VERSION 30 보상 받기";
+
+    if(text){
+      text.textContent=v30GiftClaimed
+        ? "테스트 모드 · 다시 누르면 100,000 SP를 추가 지급합니다."
+        : "100,000 SP + 계속 색이 변하는 무지개 캐릭터";
+    }
+    return;
+  }
 
   if(v30GiftClaimed){
     btn.disabled=true;
@@ -101,7 +137,7 @@ function renderV30ClaimButton(){
 }
 
 function claimV30Reward(){
-  if(v30GiftClaimed){
+  if(v30GiftClaimed && !v30TestMode){
     toast("이미 VERSION 30 보상을 받았습니다.");
     return;
   }
@@ -116,7 +152,9 @@ function claimV30Reward(){
     if(r?.profile)saveProfileV30(r.profile);
 
     if(r?.ok){
-      toast("🎉 100,000 SP + 무지개 캐릭터 획득!");
+      toast(v30TestMode
+        ? "🧪 테스트 보상 +100,000 SP!"
+        : "🎉 100,000 SP + 무지개 캐릭터 획득!");
       selectedColor="rainbow";
       localStorage.setItem("afterglow-color","rainbow");
       renderRainbowOptionV30();
@@ -203,7 +241,9 @@ document.body.classList.add("home-scroll");
 $("nick").value=localStorage.getItem("afterglow-nickname")||"";
 
 document.querySelectorAll("#colorPicker [data-color]").forEach(button=>{
-  button.style.background=button.dataset.color;
+  if(button.dataset.color!=="rainbow"){
+    button.style.background=button.dataset.color;
+  }
   button.classList.toggle("selected",button.dataset.color===selectedColor);
 
   button.onclick=()=>{
@@ -612,7 +652,7 @@ function drawPublicLobby(){
     plctx.fillText(p.nickname,p.x-camX-4,p.y-camY-7);
   });
 
-  plctx.fillStyle=selectedColor;
+  plctx.fillStyle=animatedPlayerColorV30(selectedColor,publicLobbyPlayers[myId]||{id:myId});
   plctx.fillRect(vw/2-15,vh/2-15,30,30);
   plctx.strokeStyle="#fff";
   plctx.lineWidth=2;
@@ -1600,7 +1640,7 @@ function drawBunkerInterior(){
   );
   bctx.fill();
 
-  bctx.fillStyle=(me.color==="rainbow"?rainbowColorV30(0):(me.color||"#fff"));
+  bctx.fillStyle=animatedPlayerColorV30(me.color,me);
   bctx.fillRect(
     vw/(2*scale)-bunkerCharSize/2,
     vh/(2*scale)-bunkerCharSize/2-bunkerJumpLift,
@@ -3154,7 +3194,7 @@ hospitalGlass.forEach(g=>{
   );
   exctx.fill();
 
-  exctx.fillStyle=(me.color==="rainbow"?rainbowColorV30(0):(me.color||"#fff"));
+  exctx.fillStyle=animatedPlayerColorV30(me.color,me);
   exctx.fillRect(
     vw/2-charSize/2,
     vh/2-charSize/2-jumpLift,
@@ -4280,3 +4320,29 @@ if($("v30ClaimButton")){
 renderPersistentSanityV30();
 renderRainbowOptionV30();
 renderV30ClaimButton();
+
+
+function animateRainbowPreviewV30(){
+  const btn=$("colorPicker")?.querySelector('[data-color="rainbow"]');
+  if(btn && rainbowUnlockedV30){
+    const c1=rainbowColorV30(0);
+    const c2=rainbowColorV30(4);
+    const c3=rainbowColorV30(8);
+    const c4=rainbowColorV30(12);
+    btn.style.background=`linear-gradient(135deg,${c1},${c2},${c3},${c4})`;
+  }
+  requestAnimationFrame(animateRainbowPreviewV30);
+}
+requestAnimationFrame(animateRainbowPreviewV30);
+
+
+requestAnimationFrame(()=>{
+  if(selectedColor==="rainbow" && rainbowUnlockedV30){
+    const rb=$("colorPicker")?.querySelector('[data-color="rainbow"]');
+    if(rb){
+      $("colorPicker").querySelectorAll("[data-color]").forEach(b=>
+        b.classList.toggle("selected",b===rb)
+      );
+    }
+  }
+});
