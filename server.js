@@ -171,6 +171,52 @@ async function join(s,r,name,cb,preferredColor,preferredSessionId,token){
 }
 
 
+
+// =========================================================
+// VERSION 32 SURVIVAL SYSTEMS
+// =========================================================
+const V32_POWER_TICK_MS=30000;
+const V32_FIREWALL_TICK_MS=45000;
+const V32_SLEEP_MS=9000;
+
+function v32PublicState(r){
+  return {
+    power:Math.max(0,Math.min(100,Number(r.power??100))),
+    firewall:Math.max(0,Math.min(100,Number(r.firewall??100))),
+    blackout:!!r.blackout,
+    batteryCount:Number(r.bunkerStock?.battery||0),
+    bounty:r.bounty||0,
+    bountyLevel:r.bountyLevel||1
+  };
+}
+
+function v32EmitState(r){
+  io.to(r.code).emit("v32-system-state",v32PublicState(r));
+}
+
+function spawnBountyHunterV32(r){
+  if((r.bunkerMobs||[]).some(m=>m.alive&&m.type==="bountyHunter"))return false;
+  const level=Math.max(1,r.bountyLevel||1);
+  const hp=Math.round(140*Math.pow(1.18,level-1)); // 일반 돌연변이 70의 2배부터 시작
+  r.bunkerMobs.push({
+    id:`bounty-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+    type:"bountyHunter",
+    x:860,y:680,
+    hp,maxHp:hp,alive:true,lastAttackAt:0,
+    damage:14+Math.floor((level-1)*1.5),
+    speed:1.7+Math.min(1.2,(level-1)*.08),
+    bountyLevel:level
+  });
+  r.bounty=0;
+  r.bountyLevel=level+1;
+  io.to(r.code).emit("bounty-hunter-arrived",{
+    level,hp,damage:14+Math.floor((level-1)*1.5)
+  });
+  io.to(r.code).emit("bunker-mobs",r.bunkerMobs.filter(m=>m.alive));
+  v32EmitState(r);
+  return true;
+}
+
 const GROCERY_ITEM_TYPES=["beans","water","soap","tape","battery","medkit","flashlight"];
 
 const GROCERY_POINTS=[
@@ -183,12 +229,11 @@ const GROCERY_POINTS=[
 function makeGroceryItems(){
  const points=shuffle(GROCERY_POINTS);
  const types=[
-   "beans","beans","beans","beans","beans",
-   "water","water","water","water","water",
-   "soap","soap",
-   "tape","tape",
-   "battery","battery",
-   "medkit","flashlight"
+   "beans","beans","beans",
+   "water","water","water",
+   "soap","tape",
+   "battery",
+   "medkit"
  ];
  return types.map((type,i)=>({
    id:`g-${Date.now()}-${i}-${Math.random().toString(36).slice(2,6)}`,
@@ -995,6 +1040,8 @@ io.on("connection",s=>{
     bunkerStock:{beans:0,water:0,medkit:0,battery:0,flashlight:0,mask:0,axe:0,backpack:0,blueprint:0,toolbox:0,map:0,radio:0},
     weapons:{woodenStick:1,axe:0},
     power:100,
+    firewall:100,
+    blackout:false,
     security:"LOCKED",
     messages:[],
     dayStartedAt:Date.now(),
@@ -1084,7 +1131,7 @@ io.on("connection",s=>{
   cb({ok:true,hands:p.hands,stored:p.stored,bunkerStock:r.bunkerStock,weapons:r.weapons})
  });
 
- s.on("finish-scavenge",(cb=()=>{})=>{
+ s.on("finish-scavenge",async(cb=()=>{})=>{
   const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
   if(!r||!p)return cb({ok:false});
 
@@ -1097,8 +1144,19 @@ io.on("connection",s=>{
   if(alive){
     // 첫 수집 종료 후 벙커에 들어와도 DAY 1 유지
     p.inBunker=true;
-    r.sanity+=10;
     r.bounty=Math.min(3,r.bounty+1);
+
+    // V32: 벙커 SP와 로비 SP는 같은 계정 SP
+    try{
+      const account=await accountFromSocketOrToken(s,null);
+      if(account){
+        const updated=await updateAccount(account.id,{sanityPoints:account.sanityPoints+10});
+        p.sanityPoints=updated.sanityPoints;
+        io.to(p.id).emit("account-state",accountView(updated));
+      }
+    }catch(err){ console.error("[V32 SP]",err); }
+
+    if(r.bounty>=3)spawnBountyHunterV32(r);
   }
 
   io.to(r.code).emit("scavenge-result",{
@@ -1147,6 +1205,7 @@ io.on("connection",s=>{
  s.on("bunker-move",(d)=>{
   const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
   if(!r||!p||!p.inBunker)return;
+  if(p.sleeping&&Date.now()<(p.sleepUntil||0))return;
   const x=Number(d?.x),y=Number(d?.y);
   if(!Number.isFinite(x)||!Number.isFinite(y))return;
   p.bunkerX=Math.max(115,Math.min(895,x));
@@ -1343,8 +1402,11 @@ io.on("connection",s=>{
       items:room.expeditionItems,
       mutants:room.expeditionMutants,
       hospitalAbomination:room.hospitalAbomination,
-      hospitalGlass:location==="hospital"?HOSPITAL_GLASS:[],
-      hospitalTripwires:location==="hospital"?HOSPITAL_TRIPWIRES:[],
+      hospitalGlass:location==="hospital"?HOSPITAL_GLASS.filter(g=>hospitalWalkableV26(g.x,g.y,8)):[],
+      hospitalTripwires:location==="hospital"?HOSPITAL_TRIPWIRES.filter(t=>{
+        const mx=(t.x1+t.x2)/2,my=(t.y1+t.y2)/2;
+        return hospitalWalkableV26(mx,my,4);
+      }):[],
       returnPoint,
       handLimit,
       hasGasMask,
@@ -1924,42 +1986,99 @@ io.on("connection",s=>{
   });
  });
 
- s.on("buy-sanity-item",(type,cb=()=>{})=>{
+ s.on("buy-sanity-item",async(type,cb=()=>{})=>{
   const r=rooms.get(socketRoom.get(s.id));
   if(!r)return cb({ok:false,message:"방 없음"});
-
-  const prices={
-    battery:500,
-    beans:800,
-    water:800,
-    medkit:1500,
-    flashlight:2500,
-    backpack:7000,
-    mask:12000,
-    axe:18000,
-    blueprint:30000
-  };
-
+  const prices={battery:500,beans:800,water:800,medkit:1500,flashlight:2500,backpack:7000,mask:12000,axe:18000,blueprint:30000};
   const price=prices[type];
   if(!price)return cb({ok:false,message:"판매하지 않는 물품"});
-  if(r.sanity<price)return cb({ok:false,message:"Sanity Point가 부족합니다."});
 
-  r.sanity-=price;
-  r.bunkerStock[type]=(r.bunkerStock[type]||0)+1;
-  if(type==="axe")r.weapons.axe=(r.weapons.axe||0)+1;
+  try{
+    const account=await accountFromSocketOrToken(s,null);
+    if(!account)return cb({ok:false,message:"로그인이 필요합니다."});
+    if(account.sanityPoints<price)return cb({ok:false,message:"Sanity Point가 부족합니다."});
 
-  io.to(r.code).emit("bunker-state",{
-    day:r.day,
-    sanity:r.sanity,
-    bounty:r.bounty,
-    bountyLevel:r.bountyLevel,
-    bunkerStock:r.bunkerStock,
-    weapons:r.weapons,
-    power:r.power,
-    security:r.security
-  });
+    const updated=await updateAccount(account.id,{sanityPoints:account.sanityPoints-price});
+    r.bunkerStock[type]=(r.bunkerStock[type]||0)+1;
+    if(type==="axe")r.weapons.axe=(r.weapons.axe||0)+1;
+    const p=r.players.get(s.id); if(p)p.sanityPoints=updated.sanityPoints;
 
-  cb({ok:true,sanity:r.sanity,bunkerStock:r.bunkerStock,weapons:r.weapons});
+    io.to(s.id).emit("account-state",accountView(updated));
+    io.to(r.code).emit("bunker-state",{bunkerStock:r.bunkerStock,weapons:r.weapons,power:r.power,security:r.security});
+    v32EmitState(r);
+    cb({ok:true,sanity:updated.sanityPoints,bunkerStock:r.bunkerStock,weapons:r.weapons,account:accountView(updated)});
+  }catch(err){console.error("[SHOP DB]",err);cb({ok:false,message:"DB 저장 오류"});}
+ });
+
+ s.on("v32-sleep",(payload={},cb=()=>{})=>{
+  const resolved=resolveRoomPlayer(s,payload),r=resolved.room,p=resolved.player;
+  if(!r||!p||!p.inBunker)return cb({ok:false,message:"벙커 안이 아닙니다."});
+  if(p.sleeping)return cb({ok:false,message:"이미 자고 있습니다."});
+  p.sleeping=true;p.sleepUntil=Date.now()+V32_SLEEP_MS;
+  io.to(p.id).emit("v32-sleep-start",{endsAt:p.sleepUntil});
+  setTimeout(()=>{
+    const room=rooms.get(r.code),pl=room?.players.get(p.id);
+    if(!pl)return;
+    pl.sleeping=false;pl.sleepUntil=0;
+    pl.fatigue=Math.max(0,(pl.fatigue??0)-75);
+    pl.hunger=Math.max(0,(pl.hunger??100)-12);
+    pl.thirst=Math.max(0,(pl.thirst??100)-18);
+    pl.sanityStat=Math.min(100,(pl.sanityStat??100)+12);
+    io.to(pl.id).emit("v32-sleep-finished",{stats:{fatigue:pl.fatigue,hunger:pl.hunger,thirst:pl.thirst,sanityStat:pl.sanityStat}});
+  },V32_SLEEP_MS);
+  cb({ok:true,endsAt:p.sleepUntil});
+ });
+
+ s.on("v32-generator-action",(d={},cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p||!p.inBunker)return cb({ok:false,message:"벙커 안이 아닙니다."});
+  if(d.action==="battery"){
+    if((r.bunkerStock.battery||0)<=0)return cb({ok:false,message:"배터리가 없습니다."});
+    r.bunkerStock.battery--;
+    r.power=r.power<=0?40:Math.min(100,r.power+35);
+    r.blackout=r.power<=0;
+    v32EmitState(r);
+    return cb({ok:true,state:v32PublicState(r),bunkerStock:r.bunkerStock});
+  }
+  if(r.power<=0){
+    return cb({ok:false,message:"전력이 완전히 끊겼습니다. 배터리로 먼저 재가동해야 합니다.",needsBattery:true});
+  }
+  const target=.42+Math.random()*.16;
+  p.generatorChallenge={target,createdAt:Date.now()};
+  cb({ok:true,target});
+ });
+
+ s.on("v32-generator-submit",(d={},cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p||!p.generatorChallenge)return cb({ok:false,message:"미니게임이 없습니다."});
+  const value=Math.max(0,Math.min(1,Number(d.value)||0));
+  const diff=Math.abs(value-p.generatorChallenge.target);
+  p.generatorChallenge=null;
+  const gain=diff<=.07?28:diff<=.14?14:5;
+  r.power=Math.min(100,r.power+gain);
+  if(r.power>0)r.blackout=false;
+  v32EmitState(r);
+  cb({ok:true,gain,state:v32PublicState(r)});
+ });
+
+ s.on("v32-firewall-start",(d={},cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p||!p.inBunker)return cb({ok:false,message:"벙커 안이 아닙니다."});
+  const seq=Array.from({length:5},()=>Math.floor(Math.random()*4));
+  p.firewallChallenge={seq,createdAt:Date.now()};
+  cb({ok:true,sequence:seq});
+ });
+
+ s.on("v32-firewall-submit",(d={},cb=()=>{})=>{
+  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  if(!r||!p||!p.firewallChallenge)return cb({ok:false,message:"Firewall 세션 없음"});
+  const answer=Array.isArray(d.answer)?d.answer.map(Number):[];
+  const seq=p.firewallChallenge.seq;p.firewallChallenge=null;
+  const success=seq.length===answer.length&&seq.every((v,i)=>v===answer[i]);
+  if(success){r.firewall=Math.min(100,(r.firewall??100)+45);r.security="ONLINE";}
+  else{r.firewall=Math.max(0,(r.firewall??100)-10);r.security="ALERT";}
+  v32EmitState(r);
+  cb({ok:true,success,state:v32PublicState(r)});
  });
  s.on("leave-room",(cb=()=>{})=>{leave(s);cb({ok:true})});s.on("disconnect",()=>{
   socketAccounts.delete(s.id);leavePublicLobby(s);scheduleRoomDisconnect(s)})
@@ -2144,6 +2263,7 @@ setInterval(()=>{
       if(!target)continue;
 
       const speed=
+        mob.type==="bountyHunter"?(mob.speed||7):
         mob.type==="rat"?7:
         mob.type==="spider"?6:
         5;
@@ -2159,6 +2279,7 @@ setInterval(()=>{
         mob.lastAttackAt=now;
 
         const damage=
+          mob.type==="bountyHunter"?(mob.damage||14):
           mob.type==="rat"?7:
           mob.type==="spider"?9:
           14;
@@ -2487,6 +2608,26 @@ setInterval(()=>{
     });
   }
 },1000);
+
+
+// V32: 전력/Firewall은 DAY와 무관하게 지속 감소
+setInterval(()=>{
+  for(const r of rooms.values()){
+    if(r.status!=="playing")continue;
+    r.power=Math.max(0,(r.power??100)-4);
+    if(r.power<=0)r.blackout=true;
+    v32EmitState(r);
+  }
+},V32_POWER_TICK_MS);
+
+setInterval(()=>{
+  for(const r of rooms.values()){
+    if(r.status!=="playing")continue;
+    r.firewall=Math.max(0,(r.firewall??100)-5);
+    if(r.firewall<=20)r.security="ALERT";
+    v32EmitState(r);
+  }
+},V32_FIREWALL_TICK_MS);
 
 async function startServer(){
   try{
