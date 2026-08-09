@@ -1116,3 +1116,9 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
 #expeditionCanvas{
   background:#3f4542!important;
 }
+
+
+/* v27: 시야 밖은 완전 검정 */
+#expeditionCanvas{
+  background:#000!important;
+}
