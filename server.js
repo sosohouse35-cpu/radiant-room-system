@@ -10,6 +10,7 @@ const rooms=new Map(), socketRoom=new Map();
 
 const profiles=new Map();
 const V30_EVENT_ACTIVE=true;
+const V30_TEST_MODE=true; // 테스트 중: true면 보상을 반복 수령 가능
 const V30_EVENT_POINTS=100000;
 
 function cleanProfileId(v){
@@ -40,7 +41,8 @@ function profileView(p){
     sanityPoints:p.sanityPoints,
     rainbowUnlocked:!!p.rainbowUnlocked,
     v30Claimed:!!p.v30Claimed,
-    eventActive:V30_EVENT_ACTIVE
+    eventActive:V30_EVENT_ACTIVE,
+    testMode:V30_TEST_MODE
   };
 }
 
@@ -857,11 +859,19 @@ io.on("connection",s=>{
     return cb({ok:false,message:"VERSION 30 이벤트가 종료되었습니다.",profile:profileView(p)});
   }
 
-  if(p.v30Claimed){
-    return cb({ok:false,alreadyClaimed:true,message:"이미 보상을 받았습니다.",profile:profileView(p)});
+  if(p.v30Claimed && !V30_TEST_MODE){
+    return cb({
+      ok:false,
+      alreadyClaimed:true,
+      message:"이미 보상을 받았습니다.",
+      profile:profileView(p)
+    });
   }
 
   p.v30Claimed=true;
+
+  // 테스트 모드에서는 버튼을 누를 때마다 100,000 SP를 다시 지급.
+  // 운영 전 V30_TEST_MODE=false 로 변경하면 1회 수령으로 복귀.
   p.sanityPoints+=V30_EVENT_POINTS;
   p.rainbowUnlocked=true;
 
