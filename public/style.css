@@ -1410,3 +1410,18 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
 .sleep-text{position:absolute;bottom:12%;color:#ddd;font-size:20px}
 @keyframes sheepJumpV32{0%{transform:translate(-160px,80px) rotate(-8deg)}45%{transform:translate(0,-120px) rotate(5deg)}100%{transform:translate(160px,70px) rotate(8deg)}}
 @media(max-width:760px){.v32-system-hud{top:44px;font-size:10px}.sleep-cloud{font-size:55px}.sleep-sheep{font-size:48px}}
+
+
+/* VERSION 32 LOGIN/UI FIX */
+.v32-modal.hidden,
+.sleep-overlay.hidden,
+.v32-system-hud.hidden{
+  display:none!important;
+  pointer-events:none!important;
+}
+
+.v32-modal:not(.hidden),
+.sleep-overlay:not(.hidden){
+  pointer-events:auto;
+}
+
