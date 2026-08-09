@@ -10,6 +10,7 @@ const ctx=canvas?.getContext("2d")||null;
 var profileIdV30=localStorage.getItem("afterglowProfileId")||"";
 var persistentSanityPoints=Number(localStorage.getItem("afterglowSanityPoints")||0);
 var rainbowUnlockedV30=localStorage.getItem("afterglowRainbowUnlocked")==="1";
+var v30GiftClaimed=localStorage.getItem("afterglowV30Claimed")==="1";
 var v30RainbowPhase=0;
 
 function saveProfileV30(p){
@@ -17,13 +18,16 @@ function saveProfileV30(p){
   profileIdV30=p.profileId||profileIdV30;
   persistentSanityPoints=Number(p.sanityPoints||0);
   rainbowUnlockedV30=!!p.rainbowUnlocked;
+  v30GiftClaimed=!!p.v30Claimed;
 
   if(profileIdV30)localStorage.setItem("afterglowProfileId",profileIdV30);
   localStorage.setItem("afterglowSanityPoints",String(persistentSanityPoints));
   localStorage.setItem("afterglowRainbowUnlocked",rainbowUnlockedV30?"1":"0");
+  localStorage.setItem("afterglowV30Claimed",v30GiftClaimed?"1":"0");
 
   renderPersistentSanityV30();
   renderRainbowOptionV30();
+  renderV30ClaimButton();
 }
 
 function renderPersistentSanityV30(){
@@ -32,26 +36,103 @@ function renderPersistentSanityV30(){
 }
 
 function renderRainbowOptionV30(){
-  const select=$("color");
-  if(!select||!rainbowUnlockedV30)return;
+  const host=$("colorPicker");
+  if(!host)return;
 
-  if(![...select.options].some(o=>o.value==="rainbow")){
-    const opt=document.createElement("option");
-    opt.value="rainbow";
-    opt.textContent="🌈 V30 무지개";
-    select.appendChild(opt);
+  let btn=host.querySelector('[data-color="rainbow"]');
+
+  if(rainbowUnlockedV30){
+    if(!btn){
+      btn=document.createElement("button");
+      btn.type="button";
+      btn.dataset.color="rainbow";
+      btn.className="rainbow-color-button";
+      btn.title="VERSION 30 무지개";
+      host.appendChild(btn);
+
+      btn.onclick=()=>{
+        selectedColor="rainbow";
+        localStorage.setItem("afterglow-color","rainbow");
+
+        host.querySelectorAll("[data-color]").forEach(b=>
+          b.classList.toggle("selected",b===btn)
+        );
+      };
+    }
+  }else if(btn){
+    if(selectedColor==="rainbow"){
+      selectedColor="#4dabf7";
+      localStorage.setItem("afterglow-color",selectedColor);
+    }
+    btn.remove();
   }
 }
 
 function rainbowColorV30(index=0){
   const palette=[
-    "#ff3b30","#ff6b35","#ff9500","#ffcc00",
-    "#d4ff00","#78ff00","#32d74b","#00d4aa",
-    "#00e5ff","#0a84ff","#5e5ce6","#8e44ff",
-    "#bf5af2","#ff2dce","#ff375f","#ff7eb6"
+    "#ff1744","#ff3d00","#ff9100","#ffd600",
+    "#c6ff00","#76ff03","#00e676","#1de9b6",
+    "#00e5ff","#00b0ff","#2979ff","#651fff",
+    "#aa00ff","#d500f9","#f500d0","#ff4081"
   ];
-  const phase=Math.floor(performance.now()/90);
-  return palette[(phase+index)%palette.length];
+
+  // 약 75ms마다 다음 색으로 넘어가므로 플레이 중 계속 색이 변한다.
+  const phase=Math.floor(performance.now()/75);
+  return palette[(phase+index)%16];
+}
+
+
+function renderV30ClaimButton(){
+  const btn=$("v30ClaimButton");
+  const text=$("v30ClaimText");
+  if(!btn)return;
+
+  if(v30GiftClaimed){
+    btn.disabled=true;
+    btn.classList.add("claimed");
+    btn.textContent="✓ VERSION 30 보상 수령 완료";
+    if(text)text.textContent="100,000 SP와 무지개 캐릭터를 획득했습니다.";
+  }else{
+    btn.disabled=false;
+    btn.classList.remove("claimed");
+    btn.textContent="🎁 VERSION 30 보상 받기";
+    if(text)text.textContent="100,000 SP + 계속 색이 변하는 무지개 캐릭터";
+  }
+}
+
+function claimV30Reward(){
+  if(v30GiftClaimed){
+    toast("이미 VERSION 30 보상을 받았습니다.");
+    return;
+  }
+
+  const btn=$("v30ClaimButton");
+  if(btn){
+    btn.disabled=true;
+    btn.textContent="받는 중...";
+  }
+
+  ioClient.emit("claim-v30-event",{profileId:profileIdV30},r=>{
+    if(r?.profile)saveProfileV30(r.profile);
+
+    if(r?.ok){
+      toast("🎉 100,000 SP + 무지개 캐릭터 획득!");
+      selectedColor="rainbow";
+      localStorage.setItem("afterglow-color","rainbow");
+      renderRainbowOptionV30();
+
+      const rb=$("colorPicker")?.querySelector('[data-color="rainbow"]');
+      if(rb){
+        $("colorPicker").querySelectorAll("[data-color]").forEach(b=>
+          b.classList.toggle("selected",b===rb)
+        );
+      }
+    }else{
+      toast(r?.message||"보상을 받을 수 없습니다.");
+    }
+
+    renderV30ClaimButton();
+  });
 }
 
 let room=null,myId=null;
@@ -173,11 +254,13 @@ function joinPublicLobby(lobbyId){
   ioClient.emit("join-public-lobby",{
     lobbyId,
     nickname:$("nick").value.trim(),
-    color:selectedColor
+    color:selectedColor,
+    profileId:profileIdV30
   },r=>{
     if(!r?.ok)return toast(r?.message||"로비 입장 실패");
 
     myId=r.myId;
+    if(r.profile)saveProfileV30(r.profile);
     currentPublicLobby=r.lobby.id;
     publicLobbyPlayers={};
 
@@ -224,7 +307,7 @@ function renderPartyList(parties){
     const row=document.createElement("div");row.className="party-card";
     const info=document.createElement("div");info.innerHTML=`<b>${p.name}</b><br><small>${p.playerCount}/${p.maxPlayers}</small>`;
     const btn=document.createElement("button");btn.textContent="Join";
-    btn.onclick=()=>ioClient.emit("join-room",{nickname:$("nick").value.trim(),profileId:profileIdV30,color:$("color")?.value,code:p.code,color:selectedColor,sessionId,publicLobbyId:currentPublicLobby},joined);
+    btn.onclick=()=>ioClient.emit("join-room",{nickname:$("nick").value.trim(),profileId:profileIdV30,code:p.code,color:selectedColor,sessionId,publicLobbyId:currentPublicLobby},joined);
     row.append(info,btn);host.appendChild(row);
   });
 }
@@ -4189,3 +4272,11 @@ ioClient.on("connect_error",err=>{
   console.error("Socket connection error:",err);
   toast("서버 연결 오류");
 });
+
+
+if($("v30ClaimButton")){
+  $("v30ClaimButton").onclick=claimV30Reward;
+}
+renderPersistentSanityV30();
+renderRainbowOptionV30();
+renderV30ClaimButton();
