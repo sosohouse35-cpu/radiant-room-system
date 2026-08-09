@@ -483,24 +483,23 @@ function failVentThreat(room,vent){
 
 
 const HOSPITAL_POINTS=[
-  {x:430,y:120},{x:560,y:120},{x:680,y:120},
-  {x:150,y:270},{x:245,y:345},
-  {x:690,y:270},{x:850,y:270},
-  {x:560,y:320},{x:560,y:500},{x:560,y:620},
-  {x:580,y:720},{x:700,y:720},
-  {x:835,y:525},{x:860,y:690},{x:805,y:835}
+  {x:870,y:150},{x:1100,y:150},{x:1430,y:150},
+  {x:220,y:420},{x:220,y:760},{x:500,y:680},{x:830,y:680},
+  {x:1135,y:380},{x:1135,y:700},{x:1135,y:980},
+  {x:1440,y:680},{x:1740,y:680},{x:2050,y:500},{x:2050,y:860},
+  {x:2100,y:1060},{x:1300,y:1200},{x:1600,y:1200},
+  {x:1870,y:1320},{x:1870,y:1530},{x:1650,y:1570}
 ];
 
 const HOSPITAL_GLASS=[
-  {x:330,y:335,r:30},
-  {x:685,y:335,r:30},
-  {x:820,y:610,r:34},
-  {x:580,y:555,r:30}
+  {x:640,y:690,r:34},{x:1150,y:610,r:34},{x:1600,y:690,r:34},
+  {x:2060,y:900,r:34},{x:1480,y:1200,r:34},{x:1870,y:1410,r:34}
 ];
 
 const HOSPITAL_TRIPWIRES=[
-  {x1:300,y1:320,x2:360,y2:320},
-  {x1:740,y1:520,x2:830,y2:520}
+  {x1:460,y1:645,x2:520,y2:745},
+  {x1:1370,y1:645,x2:1430,y2:745},
+  {x1:1830,y1:1190,x2:1910,y2:1190}
 ];
 
 function makeHospitalItems(){
@@ -524,15 +523,15 @@ function makeHospitalItems(){
 function makeHospitalAbomination(){
   return {
     id:`hospital-abomination-${Date.now()}`,
-    x:650,
-    y:150,
+    x:1150,
+    y:420,
     targetX:null,
     targetY:null,
     alertedUntil:0,
     lingerUntil:0,
     lastAttackAt:0,
-    patrolX:650,
-    patrolY:150,
+    patrolX:1150,
+    patrolY:420,
     nextPatrolAt:0,
     state:"patrol"
   };
@@ -540,10 +539,66 @@ function makeHospitalAbomination(){
 
 function expeditionReturnPoint(room){
   return room.expeditionLocation==="hospital"
-    ? {x:115,y:835}
+    ? {x:1660,y:1570}
     : {x:250,y:850};
 }
 
+
+const HOSPITAL_WALKABLE_SERVER_V26=[
+  {x:720,y:80,w:980,h:180},
+  {x:1080,y:220,w:190,h:900},
+  {x:160,y:300,w:210,h:740},
+  {x:370,y:610,w:710,h:170},
+  {x:1270,y:610,w:700,h:170},
+  {x:1970,y:340,w:220,h:780},
+  {x:1970,y:980,w:300,h:240},
+  {x:1080,y:1120,w:720,h:180},
+  {x:1780,y:1120,w:190,h:520},
+  {x:1560,y:1500,w:220,h:140},
+  {x:1030,y:560,w:100,h:270},
+  {x:1220,y:560,w:100,h:270},
+  {x:1730,y:1060,w:140,h:170}
+];
+
+function hospitalWalkableV26(x,y,radius=16){
+  return HOSPITAL_WALKABLE_SERVER_V26.some(r=>
+    x-radius>=r.x &&
+    x+radius<=r.x+r.w &&
+    y-radius>=r.y &&
+    y+radius<=r.y+r.h
+  );
+}
+
+function clampHospitalMoveV26(x,y,oldX,oldY,radius=16){
+  if(hospitalWalkableV26(x,y,radius))return {x,y};
+  if(hospitalWalkableV26(x,oldY,radius))return {x,y:oldY};
+  if(hospitalWalkableV26(oldX,y,radius))return {x:oldX,y};
+  return {x:oldX,y:oldY};
+}
+
+function chooseHospitalPatrolPointV26(){
+  return pick([
+    {x:1150,y:170},{x:250,y:520},{x:540,y:690},
+    {x:1150,y:720},{x:1570,y:690},{x:2070,y:580},
+    {x:2070,y:1020},{x:1400,y:1200},{x:1870,y:1450},
+    {x:1660,y:1560}
+  ]);
+}
+
+function moveHospitalAbominationV26(a,targetX,targetY,speed){
+  const dx=targetX-a.x,dy=targetY-a.y;
+  const dist=Math.hypot(dx,dy);
+  if(dist<3)return;
+  const ux=dx/(dist||1),uy=dy/(dist||1);
+  const tries=[[ux,uy],[ux,0],[0,uy],[-uy,ux],[uy,-ux]];
+  for(const [mx,my] of tries){
+    const n=clampHospitalMoveV26(a.x+mx*speed,a.y+my*speed,a.x,a.y,18);
+    if(n.x!==a.x||n.y!==a.y){a.x=n.x;a.y=n.y;return;}
+  }
+  const pt=chooseHospitalPatrolPointV26();
+  a.patrolX=pt.x;a.patrolY=pt.y;
+  a.targetX=null;a.targetY=null;a.alertedUntil=0;
+}
 const HOSPITAL_WALLS_SERVER=[
   // outer world bounds
   {x:0,y:0,w:1200,h:28},{x:0,y:932,w:1200,h:28},
@@ -876,6 +931,32 @@ io.on("connection",s=>{
 
 
 
+
+ s.on("bunker-jump",(payload={},cb=()=>{})=>{
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
+  if(!r||!p||!p.inBunker)return cb({ok:false,message:"벙커 안이 아닙니다."});
+
+  const now=Date.now();
+  if(p.jumping&&now<p.jumpUntil)return cb({ok:false,message:"이미 점프 중입니다."});
+
+  p.jumping=true;
+  p.jumpUntil=now+520;
+
+  io.to(r.code).emit("bunker-player-jumped",{id:p.id,jumpUntil:p.jumpUntil});
+
+  setTimeout(()=>{
+    const room=rooms.get(r.code);
+    const player=room?.players.get(p.id);
+    if(player){
+      player.jumping=false;
+      io.to(r.code).emit("bunker-player-landed",{id:player.id});
+    }
+  },540);
+
+  cb({ok:true,jumpUntil:p.jumpUntil});
+ });
+
  s.on("bunker-move",(d)=>{
   const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
   if(!r||!p||!p.inBunker)return;
@@ -898,6 +979,8 @@ io.on("connection",s=>{
     facingX:p.facingX,
     facingY:p.facingY,
     equipped:p.equipped,
+    jumping:p.jumping,
+    jumpUntil:p.jumpUntil,
     nickname:p.nickname,
     color:p.color
   });
@@ -1149,8 +1232,14 @@ io.on("connection",s=>{
 
   const prevX=p.expeditionX,prevY=p.expeditionY;
 
-  p.expeditionX=Math.max(35,Math.min(1165,x));
-  p.expeditionY=Math.max(35,Math.min(925,y));
+  if(r.expeditionLocation==="hospital"){
+    const n=clampHospitalMoveV26(x,y,p.expeditionX,p.expeditionY,15);
+    p.expeditionX=n.x;
+    p.expeditionY=n.y;
+  }else{
+    p.expeditionX=Math.max(35,Math.min(1165,x));
+    p.expeditionY=Math.max(35,Math.min(925,y));
+  }
 
   const fx=Number(d?.facingX),fy=Number(d?.facingY);
   if(Number.isFinite(fx)&&Number.isFinite(fy)&&(Math.abs(fx)+Math.abs(fy)>.05)){
@@ -1955,20 +2044,20 @@ setInterval(()=>{
 
     if(chasing){
       a.state="chase";
-      moveHospitalAbomination(a,a.targetX,a.targetY,22);
+      moveHospitalAbominationV26(a,a.targetX,a.targetY,22);
     }else{
       a.state="patrol";
       a.targetX=null;
       a.targetY=null;
 
       if(now>=a.nextPatrolAt || Math.hypot(a.patrolX-a.x,a.patrolY-a.y)<25){
-        const pt=chooseHospitalPatrolPoint();
+        const pt=chooseHospitalPatrolPointV26();
         a.patrolX=pt.x;
         a.patrolY=pt.y;
         a.nextPatrolAt=now+3500+Math.floor(Math.random()*3500);
       }
 
-      moveHospitalAbomination(a,a.patrolX,a.patrolY,3.2);
+      moveHospitalAbominationV26(a,a.patrolX,a.patrolY,3.2);
     }
 
     for(const p of explorers){
