@@ -1122,3 +1122,53 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
 #expeditionCanvas{
   background:#000!important;
 }
+
+
+/* =========================================================
+   VERSION 30 EVENT
+========================================================= */
+.persistent-sanity{
+  position:fixed;
+  left:18px;
+  top:74px;
+  z-index:35;
+  background:rgba(10,14,11,.88);
+  border:1px solid #68745d;
+  padding:8px 11px;
+  color:#dfff76;
+  font-weight:900;
+  pointer-events:none;
+}
+
+.v30-event-badge{
+  position:fixed;
+  left:50%;
+  top:16px;
+  transform:translateX(-50%);
+  z-index:35;
+  padding:7px 12px;
+  background:rgba(12,16,13,.9);
+  border:1px solid rgba(210,255,90,.45);
+  color:#dfff76;
+  font-size:12px;
+  font-weight:900;
+  pointer-events:none;
+  white-space:nowrap;
+}
+
+@media(max-width:760px){
+  .persistent-sanity{
+    top:60px;
+    left:8px;
+    font-size:11px;
+    padding:6px 8px;
+  }
+
+  .v30-event-badge{
+    top:8px;
+    max-width:72vw;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    font-size:10px;
+  }
+}
