@@ -1254,3 +1254,85 @@ body.home-scroll{overflow-x:hidden!important;overflow-y:auto!important;touch-act
   background:rgba(70,45,5,.58);
   border:1px solid rgba(255,205,80,.38);
 }
+
+
+/* =========================================================
+   ACCOUNT LOGIN / REGISTER
+========================================================= */
+.auth-screen{
+  display:flex;
+  justify-content:center;
+  padding:18px 0 30px;
+}
+
+.auth-panel{
+  width:min(440px,calc(100vw - 28px));
+}
+
+.auth-tabs{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  margin-bottom:14px;
+}
+
+.auth-tabs button.selected{
+  outline:2px solid rgba(210,255,100,.65);
+}
+
+.auth-fields{
+  display:grid;
+  gap:10px;
+}
+
+.auth-fields label{
+  display:grid;
+  gap:5px;
+  font-size:12px;
+}
+
+.auth-fields input{
+  min-height:42px;
+  box-sizing:border-box;
+}
+
+.auth-fields > button{
+  min-height:46px;
+  font-weight:900;
+}
+
+.auth-note{
+  margin-top:12px;
+  font-size:11px;
+  opacity:.72;
+  line-height:1.5;
+}
+
+.account-summary{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+  align-items:center;
+  margin-bottom:12px;
+}
+
+.account-summary > div{
+  padding:8px;
+  background:rgba(0,0,0,.22);
+}
+
+.account-summary small{
+  display:block;
+  opacity:.65;
+  font-size:10px;
+}
+
+.account-summary button{
+  min-height:38px;
+}
+
+@media(max-width:760px){
+  .account-summary{
+    grid-template-columns:1fr;
+  }
+}
