@@ -7,6 +7,44 @@ const app=express(), server=http.createServer(app), io=new Server(server);
 app.use(express.static(path.join(__dirname,"public")));
 
 const rooms=new Map(), socketRoom=new Map();
+
+const profiles=new Map();
+const V30_EVENT_ACTIVE=true;
+const V30_EVENT_POINTS=100000;
+
+function cleanProfileId(v){
+  return String(v||"").replace(/[^A-Za-z0-9_-]/g,"").slice(0,80);
+}
+
+function getProfile(id){
+  id=cleanProfileId(id);
+  if(!id){
+    id="profile-"+Math.random().toString(36).slice(2)+Date.now().toString(36);
+  }
+
+  if(!profiles.has(id)){
+    profiles.set(id,{
+      id,
+      sanityPoints:0,
+      rainbowUnlocked:false,
+      v30Claimed:false
+    });
+  }
+
+  return profiles.get(id);
+}
+
+function profileView(p){
+  return {
+    profileId:p.id,
+    sanityPoints:p.sanityPoints,
+    rainbowUnlocked:!!p.rainbowUnlocked,
+    v30Claimed:!!p.v30Claimed,
+    eventActive:V30_EVENT_ACTIVE
+  };
+}
+
+
 const publicLobbies=Array.from({length:10},(_,i)=>({
   id:i+1,
   players:new Map(),
@@ -56,7 +94,7 @@ const pick=a=>a[Math.floor(Math.random()*a.length)];
 const shuffle=a=>[...a].sort(()=>Math.random()-.5);
 
 function code(){const c="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let s;do{s=Array.from({length:6},()=>c[Math.floor(Math.random()*c.length)]).join("")}while(rooms.has(s));return s}
-function view(r){return {code:r.code,name:r.name,publicLobbyId:r.publicLobbyId,private:r.private,maxPlayers:r.maxPlayers,hostId:r.hostId,status:r.status,players:[...r.players.values()].map(p=>({id:p.id,nickname:p.nickname,ready:p.ready,color:p.color}))}}
+function view(r){return {code:r.code,name:r.name,publicLobbyId:r.publicLobbyId,private:r.private,maxPlayers:r.maxPlayers,hostId:r.hostId,status:r.status,players:[...r.players.values()].map(p=>({id:p.id,nickname:p.nickname,ready:p.ready,color:p.color,sanityPoints:p.sanityPoints||0,rainbowUnlocked:!!p.rainbowUnlocked}))}}
 function list(){return [...rooms.values()].filter(r=>r.status==="waiting").map(r=>({code:r.code,name:r.name,playerCount:r.players.size,maxPlayers:r.maxPlayers}))}
 function emit(r){io.to(r.code).emit("room-updated",view(r));io.emit("room-list",list());if(r.publicLobbyId)emitPublicParties(r.publicLobbyId)}
 function slots(p){return p.hands.reduce((s,t)=>s+(DEFS[t]?.slots||1),0)}
@@ -94,17 +132,37 @@ function leave(s){
  }
  if(r.hostId===s.id){r.hostId=r.players.keys().next().value;r.players.get(r.hostId).ready=true} emit(r)
 }
-function join(s,r,name,cb,preferredColor,preferredSessionId){
+function join(s,r,name,cb,preferredColor,preferredSessionId,profileId){
  if(r.status!=="waiting")return cb({ok:false,message:"이미 시작됨"});
  if(r.players.size>=r.maxPlayers)return cb({ok:false,message:"방이 가득 참"});
  name=String(name||"").trim().slice(0,14);if(!name)return cb({ok:false,message:"닉네임 입력"});
+ const profile=getProfile(profileId);
  const used=new Set([...r.players.values()].map(p=>p.color));
- const requested=COLORS.includes(preferredColor)?preferredColor:null;
- const color=(requested&&!used.has(requested))
-   ? requested
-   : (COLORS.find(c=>!used.has(c))||pick(COLORS));
- const p={id:s.id,nickname:name,sessionId:String(preferredSessionId||""),ready:false,color,floor:1,x:1180,y:980,hands:[],stored:[],bunkerX:330,bunkerY:560,inBunker:false,hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,equipped:null,facingX:1,facingY:0,lastWeaponSwingAt:0,nextHallucinationAt:0,sick:false,jumping:false,jumpUntil:0,flashlightEquipped:false,inExpedition:false,expeditionX:260,expeditionY:900};
- r.players.set(s.id,p);socketRoom.set(s.id,r.code);s.join(r.code);cb({ok:true,room:view(r),myId:s.id});emit(r)
+ let color=String(preferredColor||"");
+
+ if(color==="rainbow"){
+   if(!profile.rainbowUnlocked)color="";
+ }else if(!COLORS.includes(color)){
+   color="";
+ }
+
+ // 무지개는 중복 허용. 일반 색은 가능하면 중복 피함.
+ if(!color){
+   color=COLORS.find(c=>!used.has(c))||pick(COLORS);
+ }
+
+ const p={id:s.id,nickname:name,sessionId:String(preferredSessionId||""),ready:false,color,
+   profileId:profile.id,sanityPoints:profile.sanityPoints,rainbowUnlocked:profile.rainbowUnlocked,
+   floor:1,x:1180,y:980,hands:[],stored:[],bunkerX:330,bunkerY:560,inBunker:false,
+   hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,equipped:null,
+   facingX:1,facingY:0,lastWeaponSwingAt:0,nextHallucinationAt:0,sick:false,jumping:false,
+   jumpUntil:0,flashlightEquipped:false,inExpedition:false,expeditionX:260,expeditionY:900};
+
+ r.players.set(s.id,p);
+ socketRoom.set(s.id,r.code);
+ s.join(r.code);
+ cb({ok:true,room:view(r),myId:s.id,profile:profileView(profile)});
+ emit(r)
 }
 
 
@@ -786,6 +844,54 @@ function clampHospitalMoveV30(x,y,oldX,oldY,radius=12){
   return {x:oldX,y:oldY};
 }
 io.on("connection",s=>{
+
+ s.on("get-profile",(d={},cb=()=>{})=>{
+  const p=getProfile(d?.profileId);
+  cb({ok:true,profile:profileView(p)});
+ });
+
+ s.on("claim-v30-event",(d={},cb=()=>{})=>{
+  const p=getProfile(d?.profileId);
+
+  if(!V30_EVENT_ACTIVE){
+    return cb({ok:false,message:"VERSION 30 이벤트가 종료되었습니다.",profile:profileView(p)});
+  }
+
+  if(p.v30Claimed){
+    return cb({ok:false,alreadyClaimed:true,message:"이미 보상을 받았습니다.",profile:profileView(p)});
+  }
+
+  p.v30Claimed=true;
+  p.sanityPoints+=V30_EVENT_POINTS;
+  p.rainbowUnlocked=true;
+
+  // 같은 프로필로 현재 접속 중인 캐릭터도 즉시 갱신
+  for(const room of rooms.values()){
+    for(const player of room.players.values()){
+      if(player.profileId===p.id){
+        player.sanityPoints=p.sanityPoints;
+        player.rainbowUnlocked=true;
+      }
+    }
+  }
+
+  for(const lobby of publicLobbies){
+    for(const player of lobby.players.values()){
+      if(player.profileId===p.id){
+        player.sanityPoints=p.sanityPoints;
+        player.rainbowUnlocked=true;
+      }
+    }
+  }
+
+  cb({
+    ok:true,
+    message:"VERSION 30 보상 획득!",
+    profile:profileView(p)
+  });
+ });
+
+
  s.on("get-public-party-list",(lobbyId,cb=()=>{})=>{
   const id=Math.max(1,Math.min(10,parseInt(lobbyId)||1));
   cb({ok:true,parties:publicPartiesForLobby(id)});
@@ -799,19 +905,33 @@ io.on("connection",s=>{
 
   const lobbyId=Math.max(1,Math.min(10,parseInt(d?.lobbyId)||1));
   const nickname=String(d?.nickname||"").replace(/[<>]/g,"").trim().slice(0,14);
-  const color=String(d?.color||COLORS[0]).slice(0,20);
+  const profile=getProfile(d?.profileId);
+  let color=String(d?.color||COLORS[0]).slice(0,20);
+
+  if(color==="rainbow"){
+    if(!profile.rainbowUnlocked)color=COLORS[0];
+  }else if(!COLORS.includes(color)){
+    color=COLORS[0];
+  }
 
   if(!nickname)return cb({ok:false,message:"닉네임을 입력하세요."});
 
   const lobby=publicLobbies[lobbyId-1];
   if(lobby.players.size>=24)return cb({ok:false,message:"로비가 가득 찼습니다."});
 
-  const p={id:s.id,nickname,color,x:500+Math.random()*250,y:400+Math.random()*180};
+  const p={
+    id:s.id,nickname,color,
+    profileId:profile.id,
+    sanityPoints:profile.sanityPoints,
+    rainbowUnlocked:profile.rainbowUnlocked,
+    x:500+Math.random()*250,
+    y:400+Math.random()*180
+  };
   lobby.players.set(s.id,p);
   socketLobby.set(s.id,lobbyId);
   s.join(`public-lobby-${lobbyId}`);
 
-  cb({ok:true,myId:s.id,lobby:lobbyView(lobby),messages:lobby.messages.slice(-100)});
+  cb({ok:true,myId:s.id,lobby:lobbyView(lobby),messages:lobby.messages.slice(-100),profile:profileView(profile)});
   s.to(`public-lobby-${lobbyId}`).emit("public-lobby-player-joined",p);
   emitLobbyList();
  });
@@ -856,12 +976,24 @@ io.on("connection",s=>{
  s.emit("room-list",list());
  s.on("create-room",(d,cb=()=>{})=>{
   const originLobbyId=socketLobby.get(s.id)||parseInt(d?.publicLobbyId)||null;
+  const profile=getProfile(d?.profileId);
+  let chosenColor=String(d?.color||COLORS[0]);
+
+  if(chosenColor==="rainbow"){
+    if(!profile.rainbowUnlocked)chosenColor=COLORS[0];
+  }else if(!COLORS.includes(chosenColor)){
+    chosenColor=COLORS[0];
+  }
+
   const c=code(),p={
     id:s.id,
     nickname:String(d.nickname||"").trim().slice(0,14),
     sessionId:String(d.sessionId||""),
     ready:true,
-    color:(COLORS.includes(d?.color)?d.color:COLORS[0]),
+    color:chosenColor,
+    profileId:profile.id,
+    sanityPoints:profile.sanityPoints,
+    rainbowUnlocked:profile.rainbowUnlocked,
     floor:1,x:1180,y:980,hands:[],stored:[],
     bunkerX:330,bunkerY:560,inBunker:false,
     hp:100,hunger:100,thirst:100,hygiene:100,fatigue:0,sanityStat:100,
@@ -911,7 +1043,7 @@ io.on("connection",s=>{
     ],
     bunkerMobs:[]
   };
-  rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id});emit(r)
+  rooms.set(c,r);socketRoom.set(s.id,c);s.join(c);cb({ok:true,room:view(r),myId:s.id,profile:profileView(profile)});emit(r)
  });
  s.on("join-room",(d,cb=()=>{})=>{
   const requestedLobby=parseInt(d?.publicLobbyId)||null;
@@ -920,7 +1052,7 @@ io.on("connection",s=>{
   if(requestedLobby && r.publicLobbyId && r.publicLobbyId!==requestedLobby){
     return cb({ok:false,message:"현재 로비의 파티가 아닙니다."});
   }
-  join(s,r,d.nickname,(result)=>{ if(result?.ok)emitPublicParties(requestedLobby||r.publicLobbyId); cb(result); },d.color,d.sessionId)
+  join(s,r,d.nickname,(result)=>{ if(result?.ok)emitPublicParties(requestedLobby||r.publicLobbyId); cb(result); },d.color,d.sessionId,d.profileId)
  });
  s.on("toggle-ready",(cb=()=>{})=>{const r=rooms.get(socketRoom.get(s.id));if(!r)return cb({ok:false});if(r.hostId===s.id)return cb({ok:false});const p=r.players.get(s.id);p.ready=!p.ready;cb({ok:true});emit(r)});
  s.on("start-game",(cb=()=>{})=>{
