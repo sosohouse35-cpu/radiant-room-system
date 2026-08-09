@@ -346,6 +346,8 @@ var expeditionReturnNear=false;
 var expeditionHandLimit=4;
 var playerSick=false;
 var hospitalAbomination=null;
+var hospitalAttackUntil=0;
+var hospitalAttackTargetId=null;
 var hospitalGlass=[];
 var hospitalTripwires=[];
 var expeditionJumping=false;
@@ -2550,11 +2552,11 @@ const HOSPITAL_WALKABLE_V26=[
   {x:1080,y:1120,w:720,h:180},
   {x:1780,y:1120,w:190,h:520},
   {x:1560,y:1500,w:220,h:140},
-  {x:1030,y:560,w:100,h:270},
-  {x:1220,y:560,w:100,h:270},
-  {x:1730,y:1060,w:140,h:170}
+  {x:1010,y:540,w:140,h:310},
+  {x:1200,y:540,w:140,h:310},
+  {x:1700,y:1030,w:190,h:220}
 ,
-  {x:1680,y:1460,w:300,h:190}
+  {x:1660,y:1430,w:340,h:230}
 ];
 
 function hospitalWalkableClientV26(x,y,radius=15){
@@ -2565,6 +2567,39 @@ function hospitalWalkableClientV26(x,y,radius=15){
     y+radius<=r.y+r.h
   );
 }
+
+function hospitalHasLineOfSightV29(x1,y1,x2,y2){
+  if(expeditionLocation!=="hospital")return true;
+
+  const dist=Math.hypot(x2-x1,y2-y1);
+  const steps=Math.max(1,Math.ceil(dist/12));
+
+  for(let i=1;i<steps;i++){
+    const t=i/steps;
+    const x=x1+(x2-x1)*t;
+    const y=y1+(y2-y1)*t;
+
+    // ray가 검정 영역을 한 번이라도 지나면 벽 뒤로 판단
+    if(!hospitalWalkableClientV26(x,y,3)){
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function hospitalVisibleFromPlayerV29(worldX,worldY){
+  if(expeditionLocation!=="hospital")return true;
+
+  return hospitalHasLineOfSightV29(
+    expeditionPlayer.x+15,
+    expeditionPlayer.y+15,
+    worldX,
+    worldY
+  );
+}
+
+
 
 const HOSPITAL_SOLIDS=[
   {x:0,y:0,w:1200,h:28},{x:0,y:932,w:1200,h:28},
@@ -2689,10 +2724,10 @@ function drawExpedition(){
 
     HOSPITAL_WALKABLE_V26.forEach((r,i)=>{
       const sx=r.x-camX,sy=r.y-camY;
-      exctx.fillStyle=(i%2===0)?"#d7dad8":"#cbd0cd";
+      exctx.fillStyle=(i%2===0)?"#595f5b":"#505652";
       exctx.fillRect(sx,sy,r.w,r.h);
 
-      exctx.strokeStyle="rgba(105,112,109,.15)";
+      exctx.strokeStyle="rgba(205,214,208,.07)";
       exctx.lineWidth=1;
       const tile=58;
       for(let x=Math.floor(r.x/tile)*tile;x<r.x+r.w;x+=tile){
@@ -2717,6 +2752,40 @@ function drawExpedition(){
       exctx.fillText("START / EXIT",sx-42,sy-56);
     }
 
+    // v29 핵폭발 흔적: 이동 판정에는 영향 없는 시각 장식
+    const scorchMarks=[
+      {x:890,y:165,r:58},
+      {x:250,y:500,r:45},
+      {x:720,y:700,r:62},
+      {x:1150,y:430,r:52},
+      {x:1510,y:690,r:66},
+      {x:2070,y:520,r:48},
+      {x:1390,y:1210,r:72},
+      {x:1870,y:1490,r:48}
+    ];
+
+    scorchMarks.forEach(s=>{
+      const sx=s.x-camX,sy=s.y-camY;
+      const g=exctx.createRadialGradient(sx,sy,3,sx,sy,s.r);
+      g.addColorStop(0,"rgba(14,13,12,.48)");
+      g.addColorStop(.55,"rgba(25,22,20,.25)");
+      g.addColorStop(1,"rgba(25,22,20,0)");
+      exctx.fillStyle=g;
+      exctx.beginPath();
+      exctx.arc(sx,sy,s.r,0,Math.PI*2);
+      exctx.fill();
+    });
+
+    const debris=[
+      [940,150],[280,720],[690,675],[1180,570],
+      [1690,715],[2060,1040],[1510,1180],[1880,1540]
+    ];
+
+    debris.forEach(([x,y],i)=>{
+      exctx.fillStyle=i%2?"#323733":"#3a3d39";
+      exctx.fillRect(x-camX,y-camY,8+(i%3)*5,5+(i%2)*5);
+    });
+
 hospitalGlass.forEach(g=>{
       const sx=g.x-camX,sy=g.y-camY;
       exctx.strokeStyle="rgba(215,240,245,.95)";
@@ -2738,7 +2807,13 @@ hospitalGlass.forEach(g=>{
       exctx.stroke();
     });
 
-    if(hospitalAbomination){
+    if(
+      hospitalAbomination &&
+      hospitalVisibleFromPlayerV29(
+        hospitalAbomination.x+18,
+        hospitalAbomination.y+20
+      )
+    ){
       const sx=hospitalAbomination.x-camX,sy=hospitalAbomination.y-camY;
       exctx.fillStyle="#242a26";
       exctx.beginPath();exctx.ellipse(sx+18,sy+20,19,30,0,0,Math.PI*2);exctx.fill();
@@ -2777,6 +2852,11 @@ hospitalGlass.forEach(g=>{
 
   // 아이템
   expeditionItems.forEach(item=>{
+    if(
+      expeditionLocation==="hospital" &&
+      !hospitalVisibleFromPlayerV29(item.x,item.y)
+    )return;
+
     if(item.taken)return;
     exctx.font="27px sans-serif";
     exctx.fillText(ICON[item.type],item.x-camX,item.y-camY);
@@ -2784,6 +2864,11 @@ hospitalGlass.forEach(g=>{
 
   // 다른 탐사자
   Object.values(expeditionOthers).forEach(p=>{
+    if(
+      expeditionLocation==="hospital" &&
+      !hospitalVisibleFromPlayerV29(p.x+15,p.y+15)
+    )return;
+
     if(p.id===myId)return;
 
     let scale=1;
@@ -2973,6 +3058,27 @@ hospitalGlass.forEach(g=>{
       exctx.strokeStyle="#4d5557";
       exctx.lineWidth=2;
       exctx.stroke();
+
+      // 감지 후 실제 공격 모션. 몸 접촉 자체는 공격 판정이 아님.
+      if(performance.now()<hospitalAttackUntil){
+        const t=1-Math.max(0,hospitalAttackUntil-performance.now())/550;
+        const swing=Math.sin(t*Math.PI);
+
+        exctx.save();
+        exctx.translate(sx+18,sy+43);
+        exctx.rotate(-0.7+swing*1.4);
+
+        exctx.strokeStyle="#1b1f1c";
+        exctx.lineWidth=9;
+        exctx.lineCap="round";
+        exctx.beginPath();
+        exctx.moveTo(0,0);
+        exctx.lineTo(52,0);
+        exctx.stroke();
+
+        exctx.restore();
+      }
+
     }else{
       const wood=exctx.createLinearGradient(8,0,74,0);
       wood.addColorStop(0,"#452616");
@@ -3554,6 +3660,12 @@ ioClient.on("weapon-swung",d=>{
 });
 
 
+
+
+ioClient.on("hospital-abomination-attack",d=>{
+  hospitalAttackUntil=performance.now()+550;
+  hospitalAttackTargetId=d.targetId||null;
+});
 
 ioClient.on("hospital-abomination-moved",d=>{
   if(!hospitalAbomination)return;
