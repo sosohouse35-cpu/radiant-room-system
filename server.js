@@ -1043,6 +1043,7 @@ io.on("connection",s=>{
     power:100,
     firewall:6,
     hacked:false,
+    bunkerSystemsStarted:false,
     blackout:false,
     security:"LOCKED",
     messages:[],
@@ -1146,6 +1147,15 @@ io.on("connection",s=>{
   if(alive){
     // 첫 수집 종료 후 벙커에 들어와도 DAY 1 유지
     p.inBunker=true;
+    if(!r.bunkerSystemsStarted){
+      r.bunkerSystemsStarted=true;
+      r.power=100;
+      r.firewall=6;
+      r.hacked=false;
+      r.blackout=false;
+      r.security="ONLINE";
+      v32EmitState(r);
+    }
     r.bounty=Math.min(3,r.bounty+1);
 
     // V32: 벙커 SP와 로비 SP는 같은 계정 SP
@@ -2654,7 +2664,7 @@ setInterval(()=>{
 // V32: 전력/Firewall은 DAY와 무관하게 지속 감소
 setInterval(()=>{
   for(const r of rooms.values()){
-    if(r.status!=="playing")continue;
+    if(r.status!=="playing"||!r.bunkerSystemsStarted)continue;
     r.power=Math.max(0,(r.power??100)-4);
     if(r.power<=0)r.blackout=true;
     v32EmitState(r);
@@ -2663,7 +2673,7 @@ setInterval(()=>{
 
 setInterval(()=>{
   for(const r of rooms.values()){
-    if(r.status!=="playing"||r.hacked)continue;
+    if(r.status!=="playing"||!r.bunkerSystemsStarted||r.hacked)continue;
     r.firewall=Math.max(0,(r.firewall??6)-1);
     if(r.firewall<=0){
       r.firewall=0;
