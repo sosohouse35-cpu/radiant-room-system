@@ -1336,10 +1336,27 @@ function loop(t){
 
   if(remaining<=0){
     running=false;
-    ioClient.emit("finish-scavenge",roomIdentityPayloadV3723(),r=>{
+    ioClient.emit("finish-scavenge",roomIdentityPayloadV3723({scene:"scavenge"}),r=>{
       if(!r?.ok){
-        toast(r?.message||"서버 연결 오류 · 방 정보 복구 실패");
+        toast(r?.message||"수집 종료 처리 실패");
+        return;
       }
+
+      // 서버 이벤트와 callback 중 어느 쪽이 먼저 와도 벙커 상태를 확보
+      if(r.roomCode && room)room.code=r.roomCode;
+      bunkerStock=r.bunkerStock||bunkerStock;
+      weapons=r.weapons||weapons;
+      power=r.power??power;
+      firewall=r.firewall??firewall;
+      hacked=!!r.hacked;
+      securityState=r.security||securityState;
+      doorDefense=r.doorDefense??doorDefense;
+      doorBreached=!!r.doorBreached;
+      radioStateV372=r.radioState||radioStateV372;
+      cctvOutsideThreats=r.threats||cctvOutsideThreats;
+
+      (r.vents||[]).forEach(v=>ventStates[v.id]={...v});
+      (r.bunkerMobs||[]).forEach(m=>bunkerMobs[m.id]={...m});
     });
     draw();
     return;
@@ -2290,7 +2307,7 @@ function refreshRadioStateV372(){
     if(!r?.ok){
       recoverBunkerConnectionV3723(ok=>{
         if(ok)setTimeout(refreshRadioStateV372,80);
-      });
+      },{scene:"bunker",silent:true});
       return;
     }
     radioStateV372=r.state||radioStateV372;
@@ -2304,8 +2321,13 @@ function openRadioPanelV372(){
     toast("라디오 UI를 불러오지 못했습니다.");
     return;
   }
+
   panel.classList.remove("hidden");
-  refreshRadioStateV372();
+
+  // 라디오를 누른 순간 방 연결 상태를 한 번 동기화한 뒤 채널 상태를 로드.
+  recoverBunkerConnectionV3723(ok=>{
+    refreshRadioStateV372();
+  },{scene:"bunker",silent:true});
 }
 
 if($("radioCloseV372")) $("radioCloseV372").onclick=()=> $("radioPanelV372")?.classList.add("hidden");
@@ -2316,7 +2338,7 @@ document.querySelectorAll("[data-radio-channel]").forEach(btn=>{
     const freq=$("radioFrequencyV372");
     if(freq)freq.textContent=`${channel} FM`;
 
-    ioClient.emit("v372-radio-tune",roomIdentityPayloadV3723({channel}),r=>{
+    ioClient.emit("v372-radio-tune",roomIdentityPayloadV3723({channel,scene:"bunker"}),r=>{
       if(!r?.ok){
         toast(r?.message||"라디오 오류");
         return;
@@ -2340,7 +2362,7 @@ if($("radioAlienV372")) $("radioAlienV372").onclick=()=>{
 if($("radioEventActionsV372")) $("radioEventActionsV372").onclick=e=>{
   const choice=e.target.dataset.radioChoice;
   if(choice){
-    ioClient.emit("v372-radio-choice",roomIdentityPayloadV3723({choice}),r=>{
+    ioClient.emit("v372-radio-choice",roomIdentityPayloadV3723({choice,scene:"bunker"}),r=>{
       if(!r?.ok)return toast(r?.message||"이벤트 처리 실패");
       bunkerStock=r.bunkerStock||bunkerStock;
       radioStateV372=r.state||radioStateV372;
@@ -2391,13 +2413,11 @@ ioClient.on("connect",()=>{
   if(room?.code && (bunkerRunning || expeditionRunning)){
     setTimeout(()=>{
       recoverBunkerConnectionV3723(ok=>{
-        if(ok){
-          if(bunkerRunning){
-            refreshOutsideCCTVV37();
-            refreshRadioStateV372();
-          }
+        if(ok && bunkerRunning){
+          refreshOutsideCCTVV37();
+          refreshRadioStateV372();
         }
-      });
+      },{scene:bunkerRunning?"bunker":(expeditionRunning?"expedition":"room"),silent:true});
     },250);
   }
 });
@@ -3237,7 +3257,7 @@ function refreshOutsideCCTVV37(){
     if(!r?.ok){
       recoverBunkerConnectionV3723(ok=>{
         if(ok)setTimeout(refreshOutsideCCTVV37,80);
-      });
+      },{scene:"bunker",silent:true});
       return;
     }
     doorDefense=r.doorDefense??doorDefense;
@@ -3380,19 +3400,32 @@ function startSleepDreamV32(endsAt){
 
 
 function roomIdentityPayloadV3723(extra={}){
+  const scene=
+    bunkerRunning ? "bunker" :
+    expeditionRunning ? "expedition" :
+    running ? "scavenge" : "room";
+
   return {
     roomCode:room?.code||"",
     sessionId:sessionId||"",
+    accountId:currentAccount?.accountId||"",
     nickname:currentAccount?.displayName||me?.nickname||"",
-    token:localStorage.getItem("afterglow_login_token")||localStorage.getItem("loginToken")||"",
+    token:accountToken||"",
+    scene,
     ...extra
   };
 }
 
-function recoverBunkerConnectionV3723(done=()=>{}){
-  ioClient.emit("v3723-recover-room",roomIdentityPayloadV3723(),r=>{
+function recoverBunkerConnectionV3723(done=()=>{},options={}){
+  const payload=roomIdentityPayloadV3723({
+    scene:options.scene || (bunkerRunning?"bunker":"room")
+  });
+
+  ioClient.emit("v3723-recover-room",payload,r=>{
     if(!r?.ok){
-      toast(r?.message||"서버 연결/방 정보 복구 실패");
+      if(!options.silent){
+        toast(r?.message||"서버 연결/방 정보 복구 실패");
+      }
       done(false);
       return;
     }
@@ -3903,6 +3936,15 @@ function updateMobileActionVisibility(scene){
 
 function enterBunkerScene(){
   document.body.classList.remove("chat-open");
+
+  // 네트워크 오류가 있어도 검은 페이드 화면에 영구 고정되지 않도록 안전 해제.
+  setTimeout(()=>{
+    const fade=$("fadeOverlay");
+    if(fade){
+      fade.style.opacity="0";
+      setTimeout(()=>fade.classList.add("hidden"),700);
+    }
+  },1800);
   updateMobileActionVisibility("bunker");
   $("bunkerUI").classList.remove("hidden");
   $("fadeOverlay").classList.remove("hidden");
@@ -3935,27 +3977,25 @@ function enterBunkerScene(){
   $("messageButton").style.setProperty("display","block","important");
   $("messageButton").style.setProperty("z-index","140","important");
 
-  recoverBunkerConnectionV3723(ok=>{
-    if(!ok)return;
+  // 벙커 렌더링은 네트워크 복구 성공 여부와 분리한다.
+  // 서버 상태는 가능한 즉시 가져오고 실패하면 백그라운드 복구가 다시 시도한다.
+  ioClient.emit("get-bunker-players",roomIdentityPayloadV3723({scene:"bunker"}),r=>{
+    if(r?.ok){
+      bunkerOthers={};
+      r.players.forEach(p=>bunkerOthers[p.id]=p);
+    }
+  });
 
-    ioClient.emit("get-bunker-players",roomIdentityPayloadV3723(),r=>{
-      if(r?.ok){
-        bunkerOthers={};
-        r.players.forEach(p=>bunkerOthers[p.id]=p);
-      }
+  ioClient.emit("get-vent-state",roomIdentityPayloadV3723({scene:"bunker"}),r=>{
+    if(!r?.ok)return;
+
+    (r.vents||[]).forEach(v=>{
+      ventStates[v.id]={...v};
     });
 
-    ioClient.emit("get-vent-state",roomIdentityPayloadV3723(),r=>{
-      if(!r?.ok)return;
-
-      (r.vents||[]).forEach(v=>{
-        ventStates[v.id]={...v};
-      });
-
-      bunkerMobs={};
-      (r.bunkerMobs||[]).forEach(m=>{
-        bunkerMobs[m.id]={...m};
-      });
+    bunkerMobs={};
+    (r.bunkerMobs||[]).forEach(m=>{
+      bunkerMobs[m.id]={...m};
     });
   });
 
@@ -5593,14 +5633,20 @@ ioClient.on("scavenge-result",d=>{
   }
 
   setTimeout(()=>{
-    recoverBunkerConnectionV3723(ok=>{
-      if(ok){
-        enterBunkerScene();
-      }else{
-        toast("벙커 진입 실패 · 방 연결을 복구하지 못했습니다.");
-      }
-    });
-  },650);
+    // scavenge-result를 받은 시점에 서버는 이미 p.inBunker=true로 전환 완료.
+    // 복구 요청 실패 때문에 검정 화면에 갇히지 않도록 장면부터 정상 진입한다.
+    enterBunkerScene();
+
+    // 연결 상태 동기화는 화면 진입 뒤 백그라운드에서 수행.
+    setTimeout(()=>{
+      recoverBunkerConnectionV3723(ok=>{
+        if(ok){
+          refreshOutsideCCTVV37();
+          refreshRadioStateV372();
+        }
+      },{scene:"bunker",silent:true});
+    },250);
+  },450);
 });
 
 ioClient.on("account-state",a=>{
