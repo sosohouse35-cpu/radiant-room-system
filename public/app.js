@@ -2249,7 +2249,7 @@ function renderRadioPanelV372(){
 }
 
 function refreshRadioStateV372(){
-  ioClient.emit("v372-radio-state",r=>{
+  ioClient.emit("v372-radio-state",roomIdentityPayloadV3723(),r=>{
     if(!r?.ok)return;
     radioStateV372=r.state||radioStateV372;
     renderRadioPanelV372();
@@ -2274,7 +2274,7 @@ document.querySelectorAll("[data-radio-channel]").forEach(btn=>{
     const freq=$("radioFrequencyV372");
     if(freq)freq.textContent=`${channel} FM`;
 
-    ioClient.emit("v372-radio-tune",{channel},r=>{
+    ioClient.emit("v372-radio-tune",roomIdentityPayloadV3723({channel}),r=>{
       if(!r?.ok){
         toast(r?.message||"라디오 오류");
         return;
@@ -2286,7 +2286,7 @@ document.querySelectorAll("[data-radio-channel]").forEach(btn=>{
 });
 
 if($("radioAlienV372")) $("radioAlienV372").onclick=()=>{
-  ioClient.emit("v372-aliens-route",r=>{
+  ioClient.emit("v372-aliens-route",roomIdentityPayloadV3723(),r=>{
     if(!r?.ok)return toast(r?.message||"UNKNOWN CHANNEL 연결 실패");
     bunkerStock=r.bunkerStock||bunkerStock;
     radioStateV372=r.state||radioStateV372;
@@ -2298,7 +2298,7 @@ if($("radioAlienV372")) $("radioAlienV372").onclick=()=>{
 if($("radioEventActionsV372")) $("radioEventActionsV372").onclick=e=>{
   const choice=e.target.dataset.radioChoice;
   if(choice){
-    ioClient.emit("v372-radio-choice",{choice},r=>{
+    ioClient.emit("v372-radio-choice",roomIdentityPayloadV3723({choice}),r=>{
       if(!r?.ok)return toast(r?.message||"이벤트 처리 실패");
       bunkerStock=r.bunkerStock||bunkerStock;
       radioStateV372=r.state||radioStateV372;
@@ -2308,7 +2308,7 @@ if($("radioEventActionsV372")) $("radioEventActionsV372").onclick=e=>{
   }
 
   if(e.target.dataset.gameshowSpin){
-    ioClient.emit("v372-gameshow-spin",r=>{
+    ioClient.emit("v372-gameshow-spin",roomIdentityPayloadV3723(),r=>{
       if(!r?.ok)return toast(r?.message||"룰렛 오류");
       bunkerStock=r.bunkerStock||bunkerStock;
       weapons=r.weapons||weapons;
@@ -2325,7 +2325,7 @@ if($("radioEventActionsV372")) $("radioEventActionsV372").onclick=e=>{
   }
 
   if(e.target.dataset.radioClear){
-    ioClient.emit("v372-interference-clear",r=>{
+    ioClient.emit("v372-interference-clear",roomIdentityPayloadV3723(),r=>{
       if(!r?.ok)return toast(r?.message||"복구 실패");
       bunkerStock=r.bunkerStock||bunkerStock;
       radioStateV372=r.state||radioStateV372;
@@ -2337,12 +2337,34 @@ if($("radioEventActionsV372")) $("radioEventActionsV372").onclick=e=>{
 
 if($("radioSpecialV372")) $("radioSpecialV372").onclick=e=>{
   if(!e.target.dataset.homelessExpel)return;
-  ioClient.emit("v372-homeless-expel",r=>{
+  ioClient.emit("v372-homeless-expel",roomIdentityPayloadV3723(),r=>{
     if(!r?.ok)return toast(r?.message||"처리 실패");
     radioStateV372=r.state||radioStateV372;
     renderRadioPanelV372();
   });
 };
+
+
+ioClient.on("connect",()=>{
+  if(room?.code && (bunkerRunning || expeditionRunning)){
+    setTimeout(()=>{
+      recoverBunkerConnectionV3723(ok=>{
+        if(ok){
+          if(bunkerRunning){
+            refreshOutsideCCTVV37();
+            refreshRadioStateV372();
+          }
+        }
+      });
+    },250);
+  }
+});
+
+ioClient.on("disconnect",()=>{
+  if(bunkerRunning){
+    toast("서버 연결이 끊겼습니다. 재연결을 시도합니다.");
+  }
+});
 
 ioClient.on("v372-radio-ready",()=>{});
 
@@ -2485,7 +2507,7 @@ $("computerContent").onclick=e=>{
     return;
   }
   if(e.target.id==="rechargeDefenseV37"){
-    ioClient.emit("v37-door-defense-recharge",r=>{
+    ioClient.emit("v37-door-defense-recharge",roomIdentityPayloadV3723(),r=>{
       if(!r?.ok)return toast(r?.message||"충전 실패");
       doorDefense=r.doorDefense??doorDefense;
       doorBreached=!!r.doorBreached;
@@ -3169,7 +3191,7 @@ function refreshOutsideCCTVV37(){
     if(status)status.textContent="SYSTEM LOCKED · 해킹 해제 필요";
     return;
   }
-  ioClient.emit("v37-cctv-state",r=>{
+  ioClient.emit("v37-cctv-state",roomIdentityPayloadV3723(),r=>{
     if(!r?.ok)return;
     doorDefense=r.doorDefense??doorDefense;
     doorBreached=!!r.doorBreached;
@@ -3307,6 +3329,44 @@ function startSleepDreamV32(endsAt){
     if(count<3)setTimeout(run,2500);
   };
   run();
+}
+
+
+function roomIdentityPayloadV3723(extra={}){
+  return {
+    roomCode:room?.code||"",
+    sessionId:sessionId||"",
+    nickname:currentAccount?.displayName||me?.nickname||"",
+    token:localStorage.getItem("afterglow_login_token")||localStorage.getItem("loginToken")||"",
+    ...extra
+  };
+}
+
+function recoverBunkerConnectionV3723(done=()=>{}){
+  ioClient.emit("v3723-recover-room",roomIdentityPayloadV3723(),r=>{
+    if(!r?.ok){
+      toast(r?.message||"서버 연결/방 정보 복구 실패");
+      done(false);
+      return;
+    }
+
+    bunkerStock=r.bunkerStock||bunkerStock;
+    weapons=r.weapons||weapons;
+    power=r.power??power;
+    firewall=r.firewall??firewall;
+    hacked=!!r.hacked;
+    securityState=r.security||securityState;
+    doorDefense=r.doorDefense??doorDefense;
+    doorBreached=!!r.doorBreached;
+    radioStateV372=r.radioState||radioStateV372;
+    cctvOutsideThreats=r.threats||[];
+
+    (r.vents||[]).forEach(v=>ventStates[v.id]={...v});
+    bunkerMobs={};
+    (r.bunkerMobs||[]).forEach(m=>bunkerMobs[m.id]={...m});
+
+    done(true);
+  });
 }
 
 function consumeBunker(type){
@@ -3828,27 +3888,27 @@ function enterBunkerScene(){
   $("messageButton").style.setProperty("display","block","important");
   $("messageButton").style.setProperty("z-index","140","important");
 
-  ioClient.emit("get-bunker-players",r=>{
-    if(r?.ok){
-      bunkerOthers={};
-      r.players.forEach(p=>bunkerOthers[p.id]=p);
-    }
-  });
+  recoverBunkerConnectionV3723(ok=>{
+    if(!ok)return;
 
-  ioClient.emit("get-vent-state",{
-    roomCode:room?.code,
-    sessionId,
-    nickname:currentAccount?.displayName||""
-  },r=>{
-    if(!r?.ok)return;
-
-    (r.vents||[]).forEach(v=>{
-      ventStates[v.id]={...v};
+    ioClient.emit("get-bunker-players",roomIdentityPayloadV3723(),r=>{
+      if(r?.ok){
+        bunkerOthers={};
+        r.players.forEach(p=>bunkerOthers[p.id]=p);
+      }
     });
 
-    bunkerMobs={};
-    (r.bunkerMobs||[]).forEach(m=>{
-      bunkerMobs[m.id]={...m};
+    ioClient.emit("get-vent-state",roomIdentityPayloadV3723(),r=>{
+      if(!r?.ok)return;
+
+      (r.vents||[]).forEach(v=>{
+        ventStates[v.id]={...v};
+      });
+
+      bunkerMobs={};
+      (r.bunkerMobs||[]).forEach(m=>{
+        bunkerMobs[m.id]={...m};
+      });
     });
   });
 
@@ -4893,6 +4953,24 @@ $("chooseHospital").onclick=()=>{
   $("expeditionLocationPanel").classList.add("hidden");
   requestExpedition("hospital");
 };
+
+if($("chooseSOS")) $("chooseSOS").onclick=()=>{
+  if(!radioStateV372?.unlocks?.sos){
+    toast("91.3 FM SOS 신호를 먼저 해독해야 합니다.");
+    return;
+  }
+  $("expeditionLocationPanel").classList.add("hidden");
+  requestExpedition("sos");
+};
+
+if($("chooseInterference")) $("chooseInterference").onclick=()=>{
+  if(!radioStateV372?.unlocks?.interference){
+    toast("97.9 FM Radio Interference 신호를 먼저 수신해야 합니다.");
+    return;
+  }
+  $("expeditionLocationPanel").classList.add("hidden");
+  requestExpedition("interference");
+};
 function beginExpeditionFromServer(data){
   const participants=data.participantIds||[];
 
@@ -4944,9 +5022,10 @@ updateV32HudVisibility();
   );
 
   $("expeditionTitle").textContent=
-    expeditionLocation==="hospital"
-      ? "🏥 병원 탐사"
-      : "🛒 식료품점 탐사";
+    expeditionLocation==="hospital" ? "🏥 병원 탐사" :
+    expeditionLocation==="sos" ? "📡 SOS 좌표 탐사" :
+    expeditionLocation==="interference" ? "📻 전파 방해 좌표 탐사" :
+    "🛒 식료품점 탐사";
 
   $("sickBadge").classList.toggle("hidden",!playerSick);
 
