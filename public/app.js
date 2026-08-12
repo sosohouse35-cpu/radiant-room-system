@@ -620,6 +620,39 @@ ioClient.on("connect",()=>{
   if($("status"))$("status").textContent="온라인";
 });
 
+
+// V37.2.4: 방에 입장한 뒤 Socket.IO가 재연결되면
+// 수집/벙커/탐사 어느 장면이든 즉시 room mapping을 복구한다.
+ioClient.on("connect",()=>{
+  if(!room?.code)return;
+
+  setTimeout(()=>{
+    ioClient.emit("reconnect-room",roomIdentityPayloadV3723(),r=>{
+      if(!r?.ok)return;
+
+      room=r.room||room;
+      myId=r.myId||myId;
+
+      if(r.player){
+        if(Number.isFinite(r.player.bunkerX))bunkerPlayer.x=r.player.bunkerX;
+        if(Number.isFinite(r.player.bunkerY))bunkerPlayer.y=r.player.bunkerY;
+        if(Number.isFinite(r.player.expeditionX))expeditionPlayer.x=r.player.expeditionX;
+        if(Number.isFinite(r.player.expeditionY))expeditionPlayer.y=r.player.expeditionY;
+      }
+
+      // 벙커 화면이면 CCTV/Radio 상태까지 즉시 다시 가져온다.
+      if(bunkerRunning){
+        recoverBunkerConnectionV3723(ok=>{
+          if(ok){
+            refreshOutsideCCTVV37();
+            refreshRadioStateV372();
+          }
+        });
+      }
+    });
+  },350);
+});
+
 const W=2400,H=1600,T=40,P=30,SPEED=235,COLS=W/T,ROWS=H/T;
 const ICON={beans:"🥫",water:"💧",soap:"🧼",tape:"🩹",trap:"🪤",spray:"🧴",medkit:"💊",battery:"🔋",flashlight:"🔦",mask:"😷",axe:"🪓",backpack:"🎒",blueprint:"📘",toolbox:"🧰",map:"🗺️",radio:"📻"};
 const ITEM_NAME={beans:"통조림",water:"물",soap:"비누",tape:"테이프",trap:"덫",spray:"살충제",medkit:"메디킷",battery:"배터리",flashlight:"손전등",mask:"방독면",axe:"도끼",backpack:"가방",blueprint:"블루프린트",toolbox:"공구함",map:"지도",radio:"라디오"};
@@ -1303,7 +1336,11 @@ function loop(t){
 
   if(remaining<=0){
     running=false;
-    ioClient.emit("finish-scavenge",()=>{});
+    ioClient.emit("finish-scavenge",roomIdentityPayloadV3723(),r=>{
+      if(!r?.ok){
+        toast(r?.message||"서버 연결 오류 · 방 정보 복구 실패");
+      }
+    });
     draw();
     return;
   }
@@ -2250,7 +2287,12 @@ function renderRadioPanelV372(){
 
 function refreshRadioStateV372(){
   ioClient.emit("v372-radio-state",roomIdentityPayloadV3723(),r=>{
-    if(!r?.ok)return;
+    if(!r?.ok){
+      recoverBunkerConnectionV3723(ok=>{
+        if(ok)setTimeout(refreshRadioStateV372,80);
+      });
+      return;
+    }
     radioStateV372=r.state||radioStateV372;
     renderRadioPanelV372();
   });
@@ -3192,7 +3234,12 @@ function refreshOutsideCCTVV37(){
     return;
   }
   ioClient.emit("v37-cctv-state",roomIdentityPayloadV3723(),r=>{
-    if(!r?.ok)return;
+    if(!r?.ok){
+      recoverBunkerConnectionV3723(ok=>{
+        if(ok)setTimeout(refreshOutsideCCTVV37,80);
+      });
+      return;
+    }
     doorDefense=r.doorDefense??doorDefense;
     doorBreached=!!r.doorBreached;
     bunkerStock=r.bunkerStock||bunkerStock;
@@ -5511,6 +5558,9 @@ ioClient.on("weapon-swung",d=>{
 });
 
 ioClient.on("scavenge-result",d=>{
+  if(d?.roomCode && room){
+    room.code=d.roomCode;
+  }
   day=d.day||day;
   sanity=persistentSanityPoints;
   bounty=d.bounty??bounty;
@@ -5542,7 +5592,15 @@ ioClient.on("scavenge-result",d=>{
     return;
   }
 
-  setTimeout(enterBunkerScene,650);
+  setTimeout(()=>{
+    recoverBunkerConnectionV3723(ok=>{
+      if(ok){
+        enterBunkerScene();
+      }else{
+        toast("벙커 진입 실패 · 방 연결을 복구하지 못했습니다.");
+      }
+    });
+  },650);
 });
 
 ioClient.on("account-state",a=>{
