@@ -1,11 +1,13 @@
 "use strict";
 const ioClient=io({
-  transports:["polling","websocket"],
+  // Socket.IO 기본 순서(polling -> websocket)를 사용.
+  // 첫 transport가 실패하면 다른 transport도 자동 시도한다.
+  tryAllTransports:true,
   upgrade:true,
   rememberUpgrade:false,
   reconnection:true,
   reconnectionAttempts:Infinity,
-  reconnectionDelay:700,
+  reconnectionDelay:800,
   reconnectionDelayMax:5000,
   timeout:20000
 }),$=id=>document.getElementById(id);
@@ -1075,29 +1077,45 @@ function playerVisible(player){
   return otherRoom === playerRoom;
 }
 
+let woodFloorPatternV3729=null;
+let woodFloorPatternSourceV3729=null;
+
+function getWoodFloorPatternV3729(){
+  const tile=USER_IMAGES.woodFloorSquare;
+  if(!tile || !tile.complete || !tile.naturalWidth || !tile.naturalHeight)return null;
+
+  // 이미지가 바뀐 경우에만 패턴을 다시 만든다.
+  if(woodFloorPatternV3729 && woodFloorPatternSourceV3729===tile)return woodFloorPatternV3729;
+
+  // 정사각형 원본을 정사각형 96x96으로 축소.
+  // 가로세로 비율은 1:1 -> 1:1이므로 이미지 비율은 변하지 않는다.
+  const size=96;
+  const off=document.createElement("canvas");
+  off.width=size;
+  off.height=size;
+  const oc=off.getContext("2d");
+  oc.imageSmoothingEnabled=true;
+  oc.drawImage(tile,0,0,size,size);
+
+  woodFloorPatternV3729=ctx.createPattern(off,"repeat");
+  woodFloorPatternSourceV3729=tile;
+  return woodFloorPatternV3729;
+}
+
 function wood(camX,camY,w,h){
-  const tile=USER_IMAGES.woodFloorTile || USER_IMAGES.woodFloor;
+  const pattern=getWoodFloorPatternV3729();
 
-  if(tile && tile.complete && tile.naturalWidth && tile.naturalHeight){
-    // 원본 비율 유지. 한 타일의 높이를 42px로 맞추고
-    // 그 실제 비율대로 너비를 계산해 빈틈 없이 딱 붙여 반복.
-    const th=42;
-    const tw=th*(tile.naturalWidth/tile.naturalHeight);
+  if(pattern){
+    ctx.save();
 
-    const sx0=Math.floor(camX/tw)*tw;
-    const sy0=Math.floor(camY/th)*th;
+    // 패턴을 "화면"이 아니라 "월드" 좌표에 고정한다.
+    // 카메라 이동 시 개별 타일을 매 프레임 반올림하지 않으므로
+    // 경계가 반짝이는 현상을 크게 줄인다.
+    ctx.translate(-camX,-camY);
+    ctx.fillStyle=pattern;
+    ctx.fillRect(camX,camY,w,h);
 
-    for(let yy=sy0;yy<camY+h+th;yy+=th){
-      for(let xx=sx0;xx<camX+w+tw;xx+=tw){
-        ctx.drawImage(
-          tile,
-          Math.round(xx-camX),
-          Math.round(yy-camY),
-          Math.ceil(tw)+1,
-          Math.ceil(th)+1
-        );
-      }
-    }
+    ctx.restore();
     return;
   }
 
@@ -1557,7 +1575,8 @@ const USER_ASSET_PATHS={
   bed:"bed.png",
   wallParts:"wall_parts.png",
   woodFloor:"wood_floor.png",
-  woodFloorTile:"wood_floor_tile.png"
+  woodFloorTile:"wood_floor_tile.png",
+  woodFloorSquare:"wood_floor_square.png"
 };
 const USER_IMAGES={};
 for(const [key,file] of Object.entries(USER_ASSET_PATHS)){
@@ -5965,16 +5984,32 @@ $("expeditionCanvas").addEventListener("pointerdown",combatScreenPointer);
 
 let lastConnectErrorToastV3726=0;
 ioClient.on("connect_error",err=>{
-  console.error("Socket connection error:",err?.message||err,err);
-
-  // polling으로 이미 연결되어 있다면 websocket upgrade 실패는 사용자 오류로 표시하지 않음.
-  if(ioClient.connected)return;
+  const transport=ioClient.io?.engine?.transport?.name||"not-connected";
+  console.error(
+    "Socket connection error:",
+    err?.message||err,
+    "transport:",transport,
+    err
+  );
 
   const now=Date.now();
-  if(now-lastConnectErrorToastV3726>8000){
+  if(!ioClient.connected && now-lastConnectErrorToastV3726>12000){
     lastConnectErrorToastV3726=now;
-    toast(`서버 연결 오류 · 재연결 중${err?.message ? " ("+err.message+")" : ""}`);
+    toast("서버 연결 재시도 중");
   }
+});
+
+ioClient.on("connect",()=>{
+  console.log(
+    "[SOCKET CONNECTED]",
+    ioClient.id,
+    "transport:",ioClient.io?.engine?.transport?.name,
+    "recovered:",!!ioClient.recovered
+  );
+});
+
+ioClient.io.on("reconnect_attempt",attempt=>{
+  console.log("[SOCKET RECONNECT]",attempt);
 });
 
 
