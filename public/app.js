@@ -1,5 +1,5 @@
 "use strict";
-const ioClient=io(),$=id=>document.getElementById(id);
+const ioClient=io({transports:["websocket","polling"],upgrade:true,reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:500,reconnectionDelayMax:4000}),$=id=>document.getElementById(id);
 
 // DOM canvas references must exist before socket callbacks can fire.
 const publicLobbyCanvas=$("publicLobbyCanvas");
@@ -1069,7 +1069,10 @@ function playerVisible(player){
 function wood(camX,camY,w,h){
   const tile=USER_IMAGES.woodFloor;
   if(tile && tile.complete && tile.naturalWidth){
-    const tw=64,th=64;
+    // 타일도 원본 비율을 유지한다. 긴 변 기준 64px.
+    const scale=64/Math.max(tile.naturalWidth,tile.naturalHeight);
+    const tw=Math.max(1,tile.naturalWidth*scale);
+    const th=Math.max(1,tile.naturalHeight*scale);
     const sx0=Math.floor(camX/tw)*tw;
     const sy0=Math.floor(camY/th)*th;
     for(let yy=sy0;yy<camY+h+th;yy+=th){
@@ -1381,7 +1384,20 @@ function loop(t){
   requestAnimationFrame(loop);
 }
 
-addEventListener("keydown",e=>{let k=e.key.toLowerCase();keys.add(k);if(k==="e")pickup();if(k==="f")store();if(k==="q")stair()});addEventListener("keyup",e=>keys.delete(e.key.toLowerCase()));
+addEventListener("keydown",e=>{
+  const raw=typeof e?.key==="string" ? e.key : "";
+  if(!raw)return;
+  const k=raw.toLowerCase();
+  keys.add(k);
+  if(k==="e")pickup();
+  if(k==="f")store();
+  if(k==="q")stair();
+});
+addEventListener("keyup",e=>{
+  const raw=typeof e?.key==="string" ? e.key : "";
+  if(!raw)return;
+  keys.delete(raw.toLowerCase());
+});
 const joyBase=$("joystickBase");
 const joyKnob=$("joystickKnob");
 let joyPointerId=null;
@@ -1531,10 +1547,19 @@ for(const [key,file] of Object.entries(USER_ASSET_PATHS)){
 }
 function drawUserImage(ctx,key,x,y,w,h,alpha=1){
   const img=USER_IMAGES[key];
-  if(!img || !img.complete || !img.naturalWidth)return false;
+  if(!img || !img.complete || !img.naturalWidth || !img.naturalHeight)return false;
+
+  // V37.2.7: 사용자 제공 이미지는 절대 종횡비를 바꾸지 않는다.
+  // 지정 영역 안에 contain 방식으로 맞추고 중앙 정렬한다.
+  const scale=Math.min(w/img.naturalWidth,h/img.naturalHeight);
+  const dw=img.naturalWidth*scale;
+  const dh=img.naturalHeight*scale;
+  const dx=x+(w-dw)/2;
+  const dy=y+(h-dh)/2;
+
   ctx.save();
   ctx.globalAlpha=alpha;
-  ctx.drawImage(img,x,y,w,h);
+  ctx.drawImage(img,dx,dy,dw,dh);
   ctx.restore();
   return true;
 }
@@ -5920,11 +5945,11 @@ $("expeditionCanvas").addEventListener("pointerdown",combatScreenPointer);
 
 let lastConnectErrorToastV3726=0;
 ioClient.on("connect_error",err=>{
-  console.error("Socket connection error:",err);
+  console.error("Socket connection error:",err?.message||err,err);
   const now=Date.now();
   if(now-lastConnectErrorToastV3726>8000){
     lastConnectErrorToastV3726=now;
-    toast("서버 연결 오류 · 재연결 중");
+    toast(`서버 연결 오류 · 재연결 중${err?.message ? " ("+err.message+")" : ""}`);
   }
 });
 
