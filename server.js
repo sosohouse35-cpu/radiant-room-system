@@ -433,7 +433,12 @@ function resolveRoomPlayer(socket,data={}){
 
   // 로그인된 계정 ID는 Socket reconnect 후에도 가장 신뢰할 수 있는 복구 키.
   const socketAccount=socketAccounts.get(socket.id);
-  const accountId=String(socketAccount?.id||socketAccount?.accountId||"");
+  const accountId=String(
+    data?.accountId ||
+    socketAccount?.accountId ||
+    socketAccount?.id ||
+    ""
+  );
 
   const candidates=
     roomCode&&rooms.has(roomCode)
@@ -450,6 +455,12 @@ function resolveRoomPlayer(socket,data={}){
     if(!entry)continue;
 
     const [oldId,p]=entry;
+
+    // reconnect grace timer가 남아 있으면 즉시 취소
+    if(p.sessionId && pendingDisconnects.has(p.sessionId)){
+      clearTimeout(pendingDisconnects.get(p.sessionId));
+      pendingDisconnects.delete(p.sessionId);
+    }
 
     if(oldId!==socket.id){
       candidate.players.delete(oldId);
@@ -1281,7 +1292,23 @@ io.on("connection",s=>{
     security:r.security
   });
 
-  cb({ok:true,alive,roomCode:r.code});
+  cb({
+    ok:true,
+    alive,
+    roomCode:r.code,
+    bunkerStock:r.bunkerStock,
+    weapons:r.weapons,
+    power:r.power,
+    firewall:r.firewall,
+    hacked:!!r.hacked,
+    security:r.security,
+    doorDefense:r.doorDefense,
+    doorBreached:!!r.doorBreached,
+    radioState:radioPublicStateV372(r),
+    threats:(r.outsideThreats||[]).map(v3713ThreatPublic),
+    vents:ventPublicState(r),
+    bunkerMobs:(r.bunkerMobs||[]).filter(m=>m.alive)
+  });
  });
 
 
@@ -1356,10 +1383,15 @@ io.on("connection",s=>{
     });
   }
 
-  // 벙커 전환 중에는 이 플레이어를 벙커 상태로 복구한다.
-  if(r.status==="playing"){
+  // 장면을 명시한 경우에만 서버 플레이어 상태를 변경한다.
+  // 기존처럼 playing 상태라는 이유만으로 무조건 inBunker=true로 만들지 않는다.
+  const scene=String(payload?.scene||"");
+  if(r.status==="playing" && scene==="bunker"){
     p.inBunker=true;
     p.inExpedition=false;
+  }else if(r.status==="playing" && scene==="expedition"){
+    p.inBunker=false;
+    p.inExpedition=true;
   }
 
   socketRoom.set(s.id,r.code);
@@ -2228,7 +2260,8 @@ function radioPublicStateV372(r){
     completed:{...(rs.completed||{})},
     homeless:rs.homeless?{...rs.homeless}:null,
     gameShow:rs.gameShow?{...rs.gameShow}:null,
-    alienRoute:!!rs.alienRoute
+    alienRoute:!!rs.alienRoute,
+    selectedChannel:rs.currentEvent?.channel||null
   };
 }
 
