@@ -9,11 +9,18 @@ const {Pool}=require("pg");
 const app=express(), server=http.createServer(app), io=new Server(server,{
   pingInterval:25000,
   pingTimeout:30000,
-  upgradeTimeout:15000
+  upgradeTimeout:15000,
+  connectionStateRecovery:{
+    maxDisconnectionDuration:10*60*1000,
+    skipMiddlewares:false
+  }
 });
 app.use(express.static(path.join(__dirname,"public")));
 app.get("/",(req,res)=>{
   res.sendFile(path.join(__dirname,"public","index.html"));
+});
+app.get("/healthz",(req,res)=>{
+  res.status(200).json({ok:true,version:"37.2.9",rooms:rooms?.size??0});
 });
 
 
