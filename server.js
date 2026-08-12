@@ -7,9 +7,9 @@ const express=require("express");
 const {Server}=require("socket.io");
 const {Pool}=require("pg");
 const app=express(), server=http.createServer(app), io=new Server(server,{
-  transports:["websocket","polling"],
   pingInterval:25000,
-  pingTimeout:20000
+  pingTimeout:30000,
+  upgradeTimeout:15000
 });
 app.use(express.static(path.join(__dirname,"public")));
 app.get("/",(req,res)=>{
