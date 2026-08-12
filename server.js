@@ -322,6 +322,8 @@ function scheduleRoomDisconnect(socket){
     clearTimeout(pendingDisconnects.get(sessionId));
   }
 
+  const graceMs=room.status==="playing" ? 10*60*1000 : 60*1000;
+
   const timer=setTimeout(()=>{
     pendingDisconnects.delete(sessionId);
 
@@ -337,6 +339,10 @@ function scheduleRoomDisconnect(socket){
     io.to(roomCode).emit("bunker-player-left",{id:socket.id});
 
     if(!currentRoom.players.size){
+      if(currentRoom.status==="playing"){
+        currentRoom.emptySince=Date.now();
+        return;
+      }
       rooms.delete(roomCode);
       emitLobbyList();
       io.emit("room-list",list());
@@ -349,7 +355,7 @@ function scheduleRoomDisconnect(socket){
     }
 
     emit(currentRoom);
-  },20000);
+  },graceMs);
 
   pendingDisconnects.set(sessionId,timer);
 }
@@ -435,15 +441,17 @@ function resolveRoomPlayer(socket,data={}){
   const socketAccount=socketAccounts.get(socket.id);
   const accountId=String(
     data?.accountId ||
+    socketAccount ||
     socketAccount?.accountId ||
     socketAccount?.id ||
     ""
   );
 
-  const candidates=
-    roomCode&&rooms.has(roomCode)
-      ? [rooms.get(roomCode)]
-      : [...rooms.values()];
+  const candidates=[];
+  if(roomCode&&rooms.has(roomCode))candidates.push(rooms.get(roomCode));
+  for(const r of rooms.values()){
+    if(!candidates.includes(r))candidates.push(r);
+  }
 
   for(const candidate of candidates){
     const entry=[...candidate.players.entries()].find(([,p])=>
