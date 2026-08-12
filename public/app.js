@@ -1,5 +1,14 @@
 "use strict";
-const ioClient=io({transports:["websocket","polling"],upgrade:true,reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:500,reconnectionDelayMax:4000}),$=id=>document.getElementById(id);
+const ioClient=io({
+  transports:["polling","websocket"],
+  upgrade:true,
+  rememberUpgrade:false,
+  reconnection:true,
+  reconnectionAttempts:Infinity,
+  reconnectionDelay:700,
+  reconnectionDelayMax:5000,
+  timeout:20000
+}),$=id=>document.getElementById(id);
 
 // DOM canvas references must exist before socket callbacks can fire.
 const publicLobbyCanvas=$("publicLobbyCanvas");
@@ -1067,21 +1076,31 @@ function playerVisible(player){
 }
 
 function wood(camX,camY,w,h){
-  const tile=USER_IMAGES.woodFloor;
-  if(tile && tile.complete && tile.naturalWidth){
-    // 타일도 원본 비율을 유지한다. 긴 변 기준 64px.
-    const scale=64/Math.max(tile.naturalWidth,tile.naturalHeight);
-    const tw=Math.max(1,tile.naturalWidth*scale);
-    const th=Math.max(1,tile.naturalHeight*scale);
+  const tile=USER_IMAGES.woodFloorTile || USER_IMAGES.woodFloor;
+
+  if(tile && tile.complete && tile.naturalWidth && tile.naturalHeight){
+    // 원본 비율 유지. 한 타일의 높이를 42px로 맞추고
+    // 그 실제 비율대로 너비를 계산해 빈틈 없이 딱 붙여 반복.
+    const th=42;
+    const tw=th*(tile.naturalWidth/tile.naturalHeight);
+
     const sx0=Math.floor(camX/tw)*tw;
     const sy0=Math.floor(camY/th)*th;
+
     for(let yy=sy0;yy<camY+h+th;yy+=th){
       for(let xx=sx0;xx<camX+w+tw;xx+=tw){
-        ctx.drawImage(tile,xx-camX,yy-camY,tw,th);
+        ctx.drawImage(
+          tile,
+          Math.round(xx-camX),
+          Math.round(yy-camY),
+          Math.ceil(tw)+1,
+          Math.ceil(th)+1
+        );
       }
     }
     return;
   }
+
   ctx.fillStyle="#d6ba8b";
   ctx.fillRect(0,0,w,h);
 }
@@ -1537,7 +1556,8 @@ const USER_ASSET_PATHS={
   computer:"computer.png",
   bed:"bed.png",
   wallParts:"wall_parts.png",
-  woodFloor:"wood_floor.png"
+  woodFloor:"wood_floor.png",
+  woodFloorTile:"wood_floor_tile.png"
 };
 const USER_IMAGES={};
 for(const [key,file] of Object.entries(USER_ASSET_PATHS)){
@@ -5946,6 +5966,10 @@ $("expeditionCanvas").addEventListener("pointerdown",combatScreenPointer);
 let lastConnectErrorToastV3726=0;
 ioClient.on("connect_error",err=>{
   console.error("Socket connection error:",err?.message||err,err);
+
+  // polling으로 이미 연결되어 있다면 websocket upgrade 실패는 사용자 오류로 표시하지 않음.
+  if(ioClient.connected)return;
+
   const now=Date.now();
   if(now-lastConnectErrorToastV3726>8000){
     lastConnectErrorToastV3726=now;
