@@ -1,0 +1,21 @@
+AFTERGLOW V37.1-5 - DOOR DEFENSE ATTACK
+
+구현:
+- AT DOOR 상태 외부 적이 실제 Door Defense 공격
+- 일반 돌연변이: 초당 1
+- Raider: 초당 4
+- Mutant Raider: 초당 8
+- 여러 적이 문 앞에 있으면 피해가 합산
+- Door Defense 실시간 서버 동기화
+- 평상시 자연 감소는 60초당 1로 완화
+- CCTV 문에 공격 충격 테두리 / 피해 숫자 표시
+- Door Defense 30% 이하 WARNING
+- Door Defense 10% 이하 CRITICAL
+- Door Defense 0% 상태 표시
+
+아직 하지 않은 것:
+- Door Defense 0에서 실제 문 파괴
+- 외부 적을 bunkerMobs로 변환
+- 벙커 내부 침입/전투
+
+다음: V37.1-6 BREACH + 벙커 침입 준비.

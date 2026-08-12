@@ -1,0 +1,18 @@
+AFTERGLOW V37.2.1 HOTFIX
+
+치명적 오류 수정:
+- V37.2 Radio UI가 app.js script보다 뒤에 있어서,
+  app.js가 로드될 때 radioCloseV372 등의 DOM이 null이 됨.
+- 이 런타임 오류 때문에 app.js 실행이 중단되어 로그인/게임 시작 등
+  기존 버튼들이 모두 눌리지 않는 현상이 발생할 수 있었음.
+
+수정:
+- Radio Panel DOM을 socket.io.js / app.js 로드보다 앞으로 이동.
+- Radio 관련 onclick 바인딩에 null 안전장치 추가.
+- Radio render/open 함수에도 DOM 존재 여부 안전장치 추가.
+- 기존 V37.2 기능은 유지.
+
+검증:
+- server.js node --check
+- app.js node --check
+- Radio DOM 위치가 app.js script보다 앞인지 확인

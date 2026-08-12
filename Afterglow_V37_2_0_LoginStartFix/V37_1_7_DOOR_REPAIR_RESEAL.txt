@@ -1,0 +1,21 @@
+AFTERGLOW V37.1-7 - DOOR REPAIR / RESEAL
+
+구현:
+- Vault Breach 발생 시 doorBreached 상태 서버 저장
+- 문이 뚫린 상태와 단순 Door Defense 0 상태를 구분
+- 침입자를 모두 처치하기 전에는 문 수리 불가
+- 파괴된 Vault Door 수리 비용:
+  공구함 1 + 테이프 2 + 배터리 1
+- 수리 성공 시 Vault Door 재봉쇄 + Door Defense 60%
+- 정상 상태에서 Door Defense 충전:
+  배터리 1개 사용 → 100%
+- 컴퓨터 해킹 중에는 수리/충전 불가
+- 전력 0에서는 수리/충전 불가
+- CCTV에 현재 수리/충전 비용 표시
+- 문 파손 그래픽은 실제 doorBreached 상태에서만 표시
+- 해킹 해제 후 구형 V36 CCTV가 아니라 새 외부 CCTV로 복귀
+- 서버/클라이언트 doorBreached 동기화
+
+다음 단계:
+- CCTV/외부 위협 시스템 최종 안정화
+- 그 다음 V37.2 Radio 대형 업데이트
