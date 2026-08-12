@@ -1,0 +1,20 @@
+AFTERGLOW V37.1-6 - VAULT BREACH + BUNKER INTRUSION
+
+구현:
+- Door Defense가 0이고 문 앞에 적이 있으면 Vault Breach 발생
+- 문 앞의 외부 적을 CCTV 목록에서 제거
+- 같은 적을 실제 bunkerMobs로 변환하여 벙커문 근처 생성
+- 일반 돌연변이: HP 110 / 공격 12 / 속도 5.8
+- Raider: HP 90 / 공격 11 / 속도 6.4
+- Mutant Raider: HP 240 / 공격 18 / 속도 4.9
+- 침입 적은 기존 벙커 AI를 사용해 가장 가까운 플레이어를 추적/공격
+- 기존 무기로 침입 적 공격 가능
+- CCTV Vault Door 파손 연출
+- VAULT BREACH 알림
+- 벙커 화면에 짧은 흔들림 연출
+- 일반 돌연변이 / Mutant Raider는 사용자 mutant.png 우선 사용
+
+다음 단계:
+- Door Defense 수리/복구 규칙
+- 침입 후 문 재봉쇄
+- CCTV/해킹/전력 연동 최종 점검

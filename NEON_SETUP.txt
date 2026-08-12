@@ -1,0 +1,1 @@
+Render Environment에 DATABASE_URL을 설정한 뒤 배포하세요. SQL 입력은 필요 없습니다.

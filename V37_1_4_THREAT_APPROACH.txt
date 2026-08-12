@@ -1,0 +1,19 @@
+AFTERGLOW V37.1-4 - EXTERIOR THREAT APPROACH
+
+이번 단계:
+- 외부 적이 생성 후 잠깐 배회
+- 일정 시간이 지나면 마당 방향으로 이동
+- 마당 도착 후 벙커 문으로 이동
+- 벙커 문 도착 시 atDoor 상태로 대기
+- 일반 돌연변이 / Raider / Mutant Raider 각각 접근 속도 차등
+- CCTV에서 ROAM / TO YARD / TO DOOR / AT DOOR 상태 표시
+- CCTV에 희미한 접근 경로 표시
+- 문 앞에 적이 도착하면 CCTV 상태 문구 경고
+
+아직 하지 않은 것:
+- Door Defense 실제 피해
+- 문 공격 애니메이션
+- 문 파괴
+- 벙커 내부 침입
+
+다음 단계: V37.1-5 Door Defense 공격.
