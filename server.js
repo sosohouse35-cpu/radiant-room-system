@@ -425,31 +425,53 @@ function emitPublicParties(lobbyId){
 function resolveRoomPlayer(socket,data={}){
   let room=rooms.get(socketRoom.get(socket.id));
   let player=room?.players.get(socket.id);
-  if(room&&player)return {room,player};
+  if(room&&player)return {room,player,recovered:false};
 
   const sessionId=String(data?.sessionId||"");
   const roomCode=String(data?.roomCode||"").toUpperCase();
   const nickname=String(data?.nickname||"");
 
-  const candidates=roomCode&&rooms.has(roomCode)?[rooms.get(roomCode)]:[...rooms.values()];
+  // 로그인된 계정 ID는 Socket reconnect 후에도 가장 신뢰할 수 있는 복구 키.
+  const socketAccount=socketAccounts.get(socket.id);
+  const accountId=String(socketAccount?.id||socketAccount?.accountId||"");
+
+  const candidates=
+    roomCode&&rooms.has(roomCode)
+      ? [rooms.get(roomCode)]
+      : [...rooms.values()];
+
   for(const candidate of candidates){
     const entry=[...candidate.players.entries()].find(([,p])=>
-      (sessionId&&p.sessionId===sessionId) || (nickname&&p.nickname===nickname)
+      (sessionId && p.sessionId===sessionId) ||
+      (accountId && p.accountId===accountId) ||
+      (nickname && p.nickname===nickname)
     );
+
     if(!entry)continue;
+
     const [oldId,p]=entry;
+
     if(oldId!==socket.id){
       candidate.players.delete(oldId);
       socketRoom.delete(oldId);
+
       p.id=socket.id;
       candidate.players.set(socket.id,p);
-      if(candidate.hostId===oldId)candidate.hostId=socket.id;
+
+      if(candidate.hostId===oldId){
+        candidate.hostId=socket.id;
+      }
+
+      io.to(candidate.code).emit("bunker-player-left",{id:oldId});
     }
+
     socketRoom.set(socket.id,candidate.code);
     socket.join(candidate.code);
-    return {room:candidate,player:p};
+
+    return {room:candidate,player:p,recovered:true};
   }
-  return {room:null,player:null};
+
+  return {room:null,player:null,recovered:false};
 }
 
 
@@ -1277,9 +1299,54 @@ io.on("connection",s=>{
   });
  });
 
- s.on("get-bunker-players",(cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id));
-  if(!r)return cb({ok:false,players:[]});
+
+ s.on("v3723-recover-room",(payload={},cb=()=>{})=>{
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
+
+  if(!r||!p){
+    return cb({
+      ok:false,
+      message:"방 정보를 복구하지 못했습니다.",
+      roomCode:String(payload?.roomCode||"")
+    });
+  }
+
+  // 벙커 전환 중에는 이 플레이어를 벙커 상태로 복구한다.
+  if(r.status==="playing"){
+    p.inBunker=true;
+    p.inExpedition=false;
+  }
+
+  socketRoom.set(s.id,r.code);
+  s.join(r.code);
+
+  cb({
+    ok:true,
+    recovered:!!resolved.recovered,
+    roomCode:r.code,
+    playerId:p.id,
+    inBunker:!!p.inBunker,
+    bunkerStock:r.bunkerStock,
+    weapons:r.weapons,
+    power:r.power,
+    firewall:r.firewall,
+    hacked:!!r.hacked,
+    security:r.security,
+    doorDefense:r.doorDefense,
+    doorBreached:!!r.doorBreached,
+    radioState:radioPublicStateV372(r),
+    threats:(r.outsideThreats||[]).map(v3713ThreatPublic),
+    vents:ventPublicState(r),
+    bunkerMobs:(r.bunkerMobs||[]).filter(m=>m.alive)
+  });
+ });
+
+ s.on("get-bunker-players",(payload={},cb=()=>{})=>{
+  if(typeof payload==="function"){ cb=payload; payload={}; }
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room;
+  if(!r)return cb({ok:false,players:[],message:"방 정보를 찾을 수 없습니다."});
   cb({
     ok:true,
     players:[...r.players.values()]
@@ -2375,16 +2442,17 @@ function v3716BreachExteriorThreats(room){
  // =========================================================
  // V37.2 RADIO SOCKETS
  // =========================================================
- s.on("v372-radio-state",(cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id));
-  const p=r?.players.get(s.id);
+ s.on("v372-radio-state",(payload={},cb=()=>{})=>{
+  if(typeof payload==="function"){ cb=payload; payload={}; }
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
   if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
   cb({ok:true,state:radioPublicStateV372(r)});
  });
 
  s.on("v372-radio-tune",(d={},cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id));
-  const p=r?.players.get(s.id);
+  const resolved=resolveRoomPlayer(s,d);
+  const r=resolved.room,p=resolved.player;
   if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
   if(!p.inBunker)return cb({ok:false,message:"벙커 안에서만 라디오를 사용할 수 있습니다."});
   if((r.bunkerStock.radio||0)<=0)return cb({ok:false,message:"라디오가 없습니다. 60초 수집 단계에서 라디오를 가져와야 합니다."});
@@ -2433,8 +2501,8 @@ function v3716BreachExteriorThreats(room){
  });
 
  s.on("v372-radio-choice",(d={},cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id));
-  const p=r?.players.get(s.id);
+  const resolved=resolveRoomPlayer(s,d);
+  const r=resolved.room,p=resolved.player;
   if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
   if((r.bunkerStock.radio||0)<=0)return cb({ok:false,message:"라디오가 없습니다."});
 
@@ -2522,9 +2590,10 @@ function v3716BreachExteriorThreats(room){
   cb({ok:true,state:radioPublicStateV372(r),bunkerStock:r.bunkerStock});
  });
 
- s.on("v372-gameshow-spin",(cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id));
-  const p=r?.players.get(s.id);
+ s.on("v372-gameshow-spin",(payload={},cb=()=>{})=>{
+  if(typeof payload==="function"){ cb=payload; payload={}; }
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
   if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
 
   const gs=r.radioState?.gameShow;
@@ -2558,9 +2627,10 @@ function v3716BreachExteriorThreats(room){
   });
  });
 
- s.on("v372-homeless-expel",(cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id));
-  const p=r?.players.get(s.id);
+ s.on("v372-homeless-expel",(payload={},cb=()=>{})=>{
+  if(typeof payload==="function"){ cb=payload; payload={}; }
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
   if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
   const h=r.radioState?.homeless;
   if(!h?.active)return cb({ok:false,message:"내보낼 방문자가 없습니다."});
@@ -2579,9 +2649,10 @@ function v3716BreachExteriorThreats(room){
   cb({ok:true,state:radioPublicStateV372(r)});
  });
 
- s.on("v372-interference-clear",(cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id));
-  const p=r?.players.get(s.id);
+ s.on("v372-interference-clear",(payload={},cb=()=>{})=>{
+  if(typeof payload==="function"){ cb=payload; payload={}; }
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
   if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
   if(!r.radioState?.interference)return cb({ok:false,message:"현재 라디오 재밍 상태가 아닙니다."});
 
@@ -2600,9 +2671,10 @@ function v3716BreachExteriorThreats(room){
   cb({ok:true,state:radioPublicStateV372(r),bunkerStock:r.bunkerStock});
  });
 
- s.on("v372-aliens-route",(cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id));
-  const p=r?.players.get(s.id);
+ s.on("v372-aliens-route",(payload={},cb=()=>{})=>{
+  if(typeof payload==="function"){ cb=payload; payload={}; }
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
   if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
   if(r.radioState?.alienRoute)return cb({ok:false,message:"이미 Alien 신호 루트를 시작했습니다."});
 
@@ -2624,10 +2696,11 @@ function v3716BreachExteriorThreats(room){
   cb({ok:true,state:radioPublicStateV372(r),bunkerStock:r.bunkerStock});
  });
 
- s.on("v37-cctv-state",(cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id));
-  const p=r?.players.get(s.id);
-  if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
+ s.on("v37-cctv-state",(payload={},cb=()=>{})=>{
+  if(typeof payload==="function"){ cb=payload; payload={}; }
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
+  if(!r||!p)return cb({ok:false,message:"방 정보를 복구하지 못했습니다."});
 
   cb({
     ok:true,
@@ -2641,10 +2714,11 @@ function v3716BreachExteriorThreats(room){
   });
  });
 
- s.on("v37-door-defense-recharge",(cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id));
-  const p=r?.players.get(s.id);
-  if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
+ s.on("v37-door-defense-recharge",(payload={},cb=()=>{})=>{
+  if(typeof payload==="function"){ cb=payload; payload={}; }
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
+  if(!r||!p)return cb({ok:false,message:"방 정보를 복구하지 못했습니다."});
   if(r.hacked)return cb({ok:false,message:"컴퓨터가 해킹되어 있습니다."});
   if((r.power??0)<=0)return cb({ok:false,message:"전력이 없습니다."});
 
