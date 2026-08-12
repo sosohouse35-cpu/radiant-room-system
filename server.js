@@ -945,7 +945,40 @@ io.on("connection",s=>{
   const id=Math.max(1,Math.min(10,parseInt(lobbyId)||1));
   cb({ok:true,parties:publicPartiesForLobby(id)});
  });
- s.on("reconnect-room",(sessionId,cb=()=>{})=>reconnectRoom(s,String(sessionId||""),cb));
+ s.on("reconnect-room",(payload={},cb=()=>{})=>{
+  if(typeof payload==="string"){
+    return reconnectRoom(s,String(payload||""),cb);
+  }
+
+  const resolved=resolveRoomPlayer(s,payload||{});
+  const r=resolved.room,p=resolved.player;
+
+  if(!r||!p){
+    return cb({ok:false,message:"방 정보를 찾을 수 없습니다."});
+  }
+
+  socketRoom.set(s.id,r.code);
+  s.join(r.code);
+
+  cb({
+    ok:true,
+    room:view(r),
+    myId:s.id,
+    player:{
+      inBunker:!!p.inBunker,
+      inExpedition:!!p.inExpedition,
+      bunkerX:p.bunkerX,
+      bunkerY:p.bunkerY,
+      expeditionX:p.expeditionX,
+      expeditionY:p.expeditionY,
+      hp:p.hp,
+      hunger:p.hunger,
+      thirst:p.thirst,
+      hygiene:p.hygiene,
+      equipped:p.equipped
+    }
+  });
+ });
 
  s.emit("public-lobby-list",lobbyList());
 
@@ -1189,9 +1222,18 @@ io.on("connection",s=>{
   cb({ok:true,hands:p.hands,stored:p.stored,bunkerStock:r.bunkerStock,weapons:r.weapons})
  });
 
- s.on("finish-scavenge",async(cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
-  if(!r||!p)return cb({ok:false});
+ s.on("finish-scavenge",async(payload={},cb=()=>{})=>{
+  if(typeof payload==="function"){ cb=payload; payload={}; }
+
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
+
+  if(!r||!p){
+    return cb({ok:false,message:"수집 종료 시 방 정보를 복구하지 못했습니다."});
+  }
+
+  socketRoom.set(s.id,r.code);
+  s.join(r.code);
 
   const cx=p.x+15,cy=p.y+15;
   const alive=
@@ -1228,6 +1270,7 @@ io.on("connection",s=>{
 
   io.to(r.code).emit("scavenge-result",{
     alive,
+    roomCode:r.code,
     day:r.day,
     sanity:r.sanity,
     bounty:r.bounty,
@@ -1238,7 +1281,7 @@ io.on("connection",s=>{
     security:r.security
   });
 
-  cb({ok:true,alive});
+  cb({ok:true,alive,roomCode:r.code});
  });
 
 
@@ -1269,8 +1312,9 @@ io.on("connection",s=>{
   cb({ok:true,jumpUntil:p.jumpUntil});
  });
 
- s.on("bunker-move",(d)=>{
-  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+ s.on("bunker-move",(d={})=>{
+  const resolved=resolveRoomPlayer(s,d);
+  const r=resolved.room,p=resolved.player;
   if(!r||!p||!p.inBunker)return;
   if(p.sleeping&&Date.now()<(p.sleepUntil||0))return;
   const x=Number(d?.x),y=Number(d?.y);
