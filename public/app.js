@@ -1066,7 +1066,22 @@ function playerVisible(player){
   return otherRoom === playerRoom;
 }
 
-function wood(camX,camY,w,h){ctx.fillStyle="#d6ba8b";ctx.fillRect(0,0,w,h);for(let yy=Math.floor(camY/28)*28;yy<camY+h+28;yy+=28){let sy=yy-camY;ctx.strokeStyle="rgba(90,58,30,.24)";ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(w,sy);ctx.stroke();for(let xx=0;xx<W;xx+=180){let sx=xx-camX+((yy/28)%2?90:0);ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx,sy+28);ctx.stroke()}}}
+function wood(camX,camY,w,h){
+  const tile=USER_IMAGES.woodFloor;
+  if(tile && tile.complete && tile.naturalWidth){
+    const tw=64,th=64;
+    const sx0=Math.floor(camX/tw)*tw;
+    const sy0=Math.floor(camY/th)*th;
+    for(let yy=sy0;yy<camY+h+th;yy+=th){
+      for(let xx=sx0;xx<camX+w+tw;xx+=tw){
+        ctx.drawImage(tile,xx-camX,yy-camY,tw,th);
+      }
+    }
+    return;
+  }
+  ctx.fillStyle="#d6ba8b";
+  ctx.fillRect(0,0,w,h);
+}
 function wallFill(camX,camY,w,h){let g=grids[floor];for(let r=Math.max(0,Math.floor(camY/T)-1);r<=Math.min(ROWS-1,Math.ceil((camY+h)/T)+1);r++)for(let c=Math.max(0,Math.floor(camX/T)-1);c<=Math.min(COLS-1,Math.ceil((camX+w)/T)+1);c++)if(g[r][c]){ctx.fillStyle="#6c5848";ctx.fillRect(c*T-camX,r*T-camY,T+1,T+1)}}
 function outlines(camX,camY){ctx.strokeStyle="#080808";ctx.lineWidth=7;roomsByFloor[floor].forEach(r=>ctx.strokeRect(r.x-camX,r.y-camY,r.w,r.h))}
 function drawStair(camX,camY){
@@ -1495,6 +1510,10 @@ const USER_ASSET_PATHS={
   flashlight:"flashlight.png",
   backpack:"backpack.png",
   radio:"radio.png",
+  battery:"battery.png",
+  trap:"trap.png",
+  spray:"spray.png",
+  mask:"mask.png",
   shower:"shower.png",
   stick:"stick.png",
   axe:"axe.png",
@@ -1533,6 +1552,10 @@ function userItemImageKey(type){
     toolbox:"toolbox",
     map:"map",
     radio:"radio",
+    battery:"battery",
+    trap:"trap",
+    spray:"spray",
+    mask:"mask",
     woodenStick:"stick",
     stick:"stick",
     bat:"bat"
@@ -1598,6 +1621,7 @@ function bunkerBlocked(nextX,nextY){
 
   // 가구 충돌
   for(const o of BUNKER_OBJECTS){
+    if(o.id==="radioStation" && (bunkerStock.radio||0)<=0)continue;
     if(o.solid && bunkerRectHit(nextX,nextY,30,30,o,2)) return true;
   }
 
@@ -1740,7 +1764,10 @@ function drawBunkerInterior(){
   });
 
   // 가구
-  BUNKER_OBJECTS.filter(o=>o.id!=="showerRoom").forEach(o=>{
+  BUNKER_OBJECTS
+    .filter(o=>o.id!=="showerRoom")
+    .filter(o=>o.id!=="radioStation" || (bunkerStock.radio||0)>0)
+    .forEach(o=>{
     const x=o.x-camX,y=o.y-camY;
 
     const userSprite={
@@ -2090,6 +2117,7 @@ function bunkerNearestObject(){
   for(const o of BUNKER_OBJECTS){
     // 계단은 장식용
     if(o.id==="stairs") continue;
+    if(o.id==="radioStation" && (bunkerStock.radio||0)<=0)continue;
 
     const cx=o.x+o.w/2,cy=o.y+o.h/2;
     const d=Math.hypot(bunkerPlayer.x-cx,bunkerPlayer.y-cy);
@@ -2316,6 +2344,11 @@ function refreshRadioStateV372(){
 }
 
 function openRadioPanelV372(){
+  if((bunkerStock.radio||0)<=0){
+    toast("라디오를 수집하지 않았습니다.");
+    return;
+  }
+
   const panel=$("radioPanelV372");
   if(!panel){
     toast("라디오 UI를 불러오지 못했습니다.");
@@ -5885,9 +5918,14 @@ $("bunkerCanvas").addEventListener("pointerdown",combatScreenPointer);
 $("expeditionCanvas").addEventListener("pointerdown",combatScreenPointer);
 
 
+let lastConnectErrorToastV3726=0;
 ioClient.on("connect_error",err=>{
   console.error("Socket connection error:",err);
-  toast("서버 연결 오류");
+  const now=Date.now();
+  if(now-lastConnectErrorToastV3726>8000){
+    lastConnectErrorToastV3726=now;
+    toast("서버 연결 오류 · 재연결 중");
+  }
 });
 
 
