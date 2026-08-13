@@ -2502,6 +2502,16 @@ function radioResultTextV372(result){
   })[result]||String(result||"");
 }
 
+
+function radioDayCountdownV3734(s){
+  const next=Number(s?.nextDayAt||0);
+  if(!next)return "";
+  const sec=Math.max(0,Math.ceil((next-Date.now())/1000));
+  const min=Math.floor(sec/60);
+  const rem=sec%60;
+  return `${min}:${String(rem).padStart(2,"0")}`;
+}
+
 function renderRadioPanelV372(){
   if(!$("radioPanelV372") || !$("radioSignalV372") || !$("radioEventV372"))return;
   const s=radioStateV372||{};
@@ -2532,7 +2542,9 @@ function renderRadioPanelV372(){
   }else if(s.pendingSignal){
     event.innerHTML=
       `<b>${s.pendingSignal.channel} FM · ${s.pendingSignal.title}</b><br>`+
-      `신호를 포착했습니다. <b>DAY ${s.pendingSignal.decisionDay}</b>에 상대가 다시 호출합니다.`;
+      `SIGNAL: <b>${s.pendingSignal.signal||"UNKNOWN"}</b><br>`+
+      `신호를 포착했습니다. <b>DAY ${s.pendingSignal.decisionDay}</b>에 상대가 다시 호출합니다.<br>`+
+      `<small>다음 DAY까지 약 <span id="radioDayCountdownV3734">${radioDayCountdownV3734(s)}</span></small>`;
     actions.innerHTML="";
   }else if(s.pendingStart){
     event.innerHTML=
@@ -2583,6 +2595,9 @@ function renderRadioPanelV372(){
       : "";
 
   special.innerHTML=`
+    <div class="radio-day-clock-v3734">
+      DAY ${s.currentDay||day} · NEXT DAY ${radioDayCountdownV3734(s)}
+    </div>
     ${timelineText}
     ${homelessText}
     ${h?.active ? '<button data-homeless-expel="1">방문자 내보내기</button>' : ''}
@@ -2605,6 +2620,15 @@ function refreshRadioStateV372(){
       return;
     }
     radioStateV372=r.state||radioStateV372;
+
+    // day-changed 패킷을 놓쳐도 라디오 상태 조회로 DAY를 다시 동기화한다.
+    if(Number.isFinite(r.state?.currentDay)){
+      day=r.state.currentDay;
+      dayStartedAt=r.state.dayStartedAt||dayStartedAt;
+      dayLengthMs=r.state.dayLengthMs||dayLengthMs;
+      updateStatusUI();
+    }
+
     renderRadioPanelV372();
   });
 }
@@ -2628,6 +2652,15 @@ function openRadioPanelV372(){
     refreshRadioStateV372();
   },{scene:"bunker",silent:true});
 }
+
+setInterval(()=>{
+  if(!$("radioPanelV372")?.classList.contains("hidden")){
+    const el=$("radioDayCountdownV3734");
+    if(el)el.textContent=radioDayCountdownV3734(radioStateV372);
+    const clock=document.querySelector(".radio-day-clock-v3734");
+    if(clock)clock.textContent=`DAY ${radioStateV372.currentDay||day} · NEXT DAY ${radioDayCountdownV3734(radioStateV372)}`;
+  }
+},1000);
 
 if($("radioCloseV372")) $("radioCloseV372").onclick=()=> $("radioPanelV372")?.classList.add("hidden");
 
@@ -3830,15 +3863,22 @@ function recoverBunkerConnectionV3723(done=()=>{},options={}){
   });
 }
 
+let bunkerConsumeLockedV3734=false;
+
 function consumeBunker(type){
+  if(bunkerConsumeLockedV3734)return;
+  bunkerConsumeLockedV3734=true;
+
   ioClient.emit("consume-bunker-item",{
     type,
     roomCode:room?.code,
     sessionId,
     nickname:currentAccount?.displayName||""
   },r=>{
-    if(!r.ok){
-      toast(r.message);
+    setTimeout(()=>{ bunkerConsumeLockedV3734=false; },300);
+
+    if(!r?.ok){
+      if(!r?.duplicate && r?.message)toast(r.message);
       return;
     }
 
@@ -4288,9 +4328,13 @@ $("bunkerPrompt").addEventListener("click",()=>{
 
 addEventListener("keydown",e=>{
   if(!bunkerRunning)return;
-  const k=e.key.toLowerCase();
+  const raw=typeof e?.key==="string"?e.key:"";
+  if(!raw)return;
+  const k=raw.toLowerCase();
   bunkerKeys.add(k);
-  if(k==="e")interactBunker();
+
+  // E를 누르고 있을 때 keydown repeat가 발생해 아이템을 연속 소비하지 않도록 한다.
+  if(k==="e" && !e.repeat)interactBunker();
 });
 addEventListener("keyup",e=>{
   if(bunkerRunning)bunkerKeys.delete(e.key.toLowerCase());
@@ -5534,6 +5578,7 @@ updateV32HudVisibility();
       : {x:250,y:850}
   );
   expeditionHandLimit=data.handLimit||4;
+  // 방독면은 탐사마다 소모하지 않고, 보유 중이면 항상 패시브 적용.
   playerSick=!data.hasGasMask;
   expeditionFlashlight=!!data.hasFlashlight;
 
