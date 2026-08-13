@@ -1812,3 +1812,12 @@ body.v32-modal-open #publicLobbyCanvas{pointer-events:none!important}
 .radio-decision-channel-v3733{font:900 24px monospace;margin:8px 0}
 .radio-decision-actions-v3733{display:flex;gap:10px;justify-content:center;margin-top:16px}
 .radio-decision-actions-v3733 button{min-width:120px;min-height:44px;font-weight:900}
+
+.radio-day-clock-v3734{
+  margin:8px 0;
+  padding:7px 9px;
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:7px;
+  font:800 12px monospace;
+  letter-spacing:.06em;
+}
