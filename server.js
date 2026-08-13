@@ -71,7 +71,7 @@ async function initDatabase(){
   admin_god_mode BOOLEAN NOT NULL DEFAULT FALSE,admin_full_bright BOOLEAN NOT NULL DEFAULT FALSE,
   login_token TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),last_login_at TIMESTAMPTZ)`);
  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS accounts_login_token_idx ON accounts(login_token) WHERE login_token IS NOT NULL`);
- console.log("[AFTERGLOW V37.3.0] Neon DB ready");
+ console.log("[AFTERGLOW V37.3.4] Neon DB ready");
 }
 function safeAccountId(v){return String(v||"").trim().toLowerCase().replace(/[^a-z0-9_-]/g,"").slice(0,24)}
 function safeDisplayName(v){return String(v||"").replace(/[<>]/g,"").trim().slice(0,14)}
@@ -1343,7 +1343,16 @@ io.on("connection",s=>{
  s.on("start-game",(cb=()=>{})=>{
   const r=rooms.get(socketRoom.get(s.id));if(!r)return cb({ok:false,message:"방 없음"});if(r.hostId!==s.id)return cb({ok:false,message:"방장만 가능"});
   if([...r.players.values()].some(p=>p.id!==r.hostId&&!p.ready))return cb({ok:false,message:"준비 필요"});
-  r.status="playing";r.items=makeItems();r.endsAt=Date.now()+ROUND;r.doorDefense=100;r.doorBreached=false;r.security="LOCKED";r.outsideThreats=[];r.nextExteriorThreatAt=Date.now()+45000;
+  r.status="playing";
+  r.day=1;
+  r.dayStartedAt=Date.now();
+  r.items=makeItems();
+  r.endsAt=Date.now()+ROUND;
+  r.doorDefense=100;
+  r.doorBreached=false;
+  r.security="LOCKED";
+  r.outsideThreats=[];
+  r.nextExteriorThreatAt=Date.now()+45000;
   let k=0;for(const p of r.players.values()){p.floor=1;p.x=1160+(k%3)*45;p.y=970+Math.floor(k/3)*45;p.hands=[];p.stored=[];p.inBunker=false;p.bunkerX=330+(k%3)*38;p.bunkerY=560+Math.floor(k/3)*38;k++}
   cb({ok:true});console.log("[GAME START]",r.code,"players:",r.players.size);
   io.to(r.code).emit("game-started",{
@@ -1418,6 +1427,11 @@ io.on("connection",s=>{
     p.inBunker=true;
     if(!r.bunkerSystemsStarted){
       r.bunkerSystemsStarted=true;
+
+      // V37.3.4: 60초 수집이 끝나고 벙커 생활이 시작되는 순간을 DAY 1 시작점으로 사용.
+      r.day=1;
+      r.dayStartedAt=Date.now();
+
       r.power=100;
       r.firewall=6;
       r.hacked=false;
@@ -1750,7 +1764,9 @@ io.on("connection",s=>{
       player.expeditionX=returnPoint.x+(index%3)*38;
       player.expeditionY=returnPoint.y+Math.floor(index/3)*38;
       player.hands=[];
-      player.sick=!hasGasMask;
+      // 방독면은 소모품이 아니라 벙커 보유 여부에 따른 영구 패시브 장비.
+      player.hasGasMaskPassive=hasGasMask;
+      player.sick=hasGasMask ? false : true;
       player.flashlightEquipped=hasFlashlight;
       player.jumping=false;
       player.jumpUntil=0;
@@ -2125,6 +2141,7 @@ io.on("connection",s=>{
   p.hands=[];
   p.inExpedition=false;
   p.inBunker=true;
+  p.hasGasMaskPassive=false;
   p.bunkerX=330;
   p.bunkerY=560;
 
@@ -2351,11 +2368,18 @@ io.on("connection",s=>{
   cb({ok:true});
  });
 
- s.on("consume-bunker-item",(payload,cb=()=>{})=>{
+ s.on("consume-bunker-item",(payload={},cb=()=>{})=>{
   const type=typeof payload==="string"?payload:payload?.type;
   const resolved=resolveRoomPlayer(s,payload);
   const r=resolved.room,p=resolved.player;
   if(!r||!p)return cb({ok:false,message:"방 정보를 복구하지 못했습니다."});
+
+  // 키 반복/클릭 중복으로 동일 아이템이 2번 소비되는 현상 방지.
+  const now=Date.now();
+  if(now-(p.lastBunkerConsumeAt||0)<450){
+    return cb({ok:false,duplicate:true,message:""});
+  }
+  p.lastBunkerConsumeAt=now;
 
   const consumable=new Set(["water","beans","medkit","soap"]);
   if(!consumable.has(type))return cb({ok:false,message:"사용할 수 없는 물품입니다."});
@@ -2446,11 +2470,11 @@ io.on("connection",s=>{
 // =========================================================
 const RADIO_EVENT_TYPES=["gameShow","sos","interference","homeless"];
 const RADIO_CHANNELS_V3722={
-  "88.7":{type:"gameShow",title:"GAME SHOW"},
-  "91.3":{type:"sos",title:"SOS MESSAGE"},
-  "97.9":{type:"interference",title:"RADIO INTERFERENCE"},
-  "104.7":{type:"homeless",title:"HOMELESS DUDE"},
-  "107.9":{type:"aliens",title:"ALIENS?"}
+  "88.7":{type:"gameShow",title:"GAME SHOW",signal:"STRONG",tone:"entertainment"},
+  "91.3":{type:"sos",title:"SOS MESSAGE",signal:"WEAK",tone:"distress"},
+  "97.9":{type:"interference",title:"RADIO INTERFERENCE",signal:"UNSTABLE",tone:"jammed"},
+  "104.7":{type:"homeless",title:"HOMELESS DUDE",signal:"MEDIUM",tone:"voice"},
+  "107.9":{type:"aliens",title:"ALIENS?",signal:"UNKNOWN",tone:"unknown"}
 };
 
 function radioPublicStateV372(r){
@@ -2461,6 +2485,9 @@ function radioPublicStateV372(r){
     pendingSignal:rs.pendingSignal?{...rs.pendingSignal}:null,
     pendingStart:rs.pendingStart?{...rs.pendingStart}:null,
     currentDay:r.day||1,
+    dayStartedAt:r.dayStartedAt||Date.now(),
+    dayLengthMs:DAY_LENGTH_MS,
+    nextDayAt:(r.dayStartedAt||Date.now())+DAY_LENGTH_MS,
     nextEventAt:0,
     interference:!!rs.interference,
     history:(rs.history||[]).slice(-8),
@@ -2838,6 +2865,8 @@ function v3716BreachExteriorThreats(room){
     type:preset.type,
     title:preset.title,
     channel,
+    signal:preset.signal,
+    tone:preset.tone,
     tunedDay:r.day,
     decisionDay:r.day+1
   };
@@ -3511,6 +3540,7 @@ safeInterval(()=>{
   for(const r of rooms.values()){
     for(const p of r.players.values()){
       if(!p.inExpedition || !p.sick || (p.hp??0)<=0)continue;
+      if(p.hasGasMaskPassive)continue;
       if(p.adminGodMode)continue;
 
       p.hp=Math.max(0,(p.hp??100)-3);
@@ -3742,6 +3772,12 @@ safeInterval(()=>{
   const now=Date.now();
 
   for(const r of rooms.values()){
+    if(r.status!=="playing" || !r.bunkerSystemsStarted)continue;
+
+    if(!Number.isFinite(r.dayStartedAt)){
+      r.dayStartedAt=now;
+    }
+
     const elapsed=now-r.dayStartedAt;
 
     if(elapsed<DAY_LENGTH_MS)continue;
@@ -4037,7 +4073,7 @@ async function startServer(){
     const port=Number(process.env.PORT)||3000;
 
     server.listen(port,"0.0.0.0",()=>{
-      console.log(`[AFTERGLOW V37.3.0] server listening on ${port}`);
+      console.log(`[AFTERGLOW V37.3.4] server listening on ${port}`);
       console.log("[V31] Neon DB ready");
     });
   }catch(e){
