@@ -674,7 +674,20 @@ var doorDefense=100; var doorBreached=false; var cctvOutsideThreats=[];
 var cctvSignalV3718="online";
 var v3715DoorHitUntil=0; var v3715LastDoorDamage=0;
 var v3716BreachUntil=0;
-var radioStateV372={currentEvent:null,interference:false,history:[],unlocks:{},completed:{},homeless:null,gameShow:null,alienRoute:false,hasRadio:false};
+var radioStateV372={
+  currentEvent:null,
+  pendingSignal:null,
+  pendingStart:null,
+  interference:false,
+  history:[],
+  unlocks:{},
+  completed:{},
+  homeless:null,
+  gameShow:null,
+  alienRoute:false,
+  hasRadio:false,
+  currentDay:1
+};
 var hp=100,hunger=100,thirst=100,hygiene=100,fatigue=0,sanityStat=100;
 var bunkerPlayer={x:330,y:560};
 
@@ -2329,6 +2342,152 @@ $("weaponList").addEventListener("click",e=>{
 $("weaponClose").onclick=()=>$("weaponPanel").classList.add("hidden");
 
 
+
+const GAME_SHOW_SECTORS_V3732=[
+  {key:"loseHealth",label:"HP 절반"},
+  {key:"weapon",label:"카타나"},
+  {key:"boss",label:"강적"},
+  {key:"supplies",label:"보급품"},
+  {key:"supplies",label:"보급품"},
+  {key:"loseSupplies",label:"자원 손실"},
+  {key:"maxHealth",label:"MAX HP"},
+  {key:"sickness",label:"질병"}
+];
+
+let gameShowWheelRotationV3732=0;
+let gameShowWheelAnimatingV3732=false;
+let gameShowWheelPendingResultV3732=null;
+
+function drawGameShowWheelV3732(rotation=0){
+  const canvas=$("gameShowWheelCanvasV3732");
+  if(!canvas)return;
+  const c=canvas.getContext("2d");
+  const W=canvas.width,H=canvas.height;
+  const cx=W/2,cy=H/2;
+  const radius=Math.min(W,H)*.45;
+  const step=Math.PI*2/GAME_SHOW_SECTORS_V3732.length;
+
+  c.clearRect(0,0,W,H);
+  c.save();
+  c.translate(cx,cy);
+  c.rotate(rotation-Math.PI/2);
+
+  GAME_SHOW_SECTORS_V3732.forEach((sector,i)=>{
+    const a0=i*step;
+    const a1=(i+1)*step;
+
+    c.beginPath();
+    c.moveTo(0,0);
+    c.arc(0,0,radius,a0,a1);
+    c.closePath();
+
+    // 고정색 지정 대신 명암 교차로 게임쇼 룰렛 구분
+    c.fillStyle=i%2===0 ? "#8a2d2d" : "#c39a38";
+    c.fill();
+
+    c.strokeStyle="#151515";
+    c.lineWidth=4;
+    c.stroke();
+
+    c.save();
+    c.rotate(a0+step/2);
+    c.translate(radius*.63,0);
+    c.rotate(Math.PI/2);
+    c.fillStyle="#fff";
+    c.font="900 19px sans-serif";
+    c.textAlign="center";
+    c.textBaseline="middle";
+    c.fillText(sector.label,0,0);
+    c.restore();
+  });
+
+  c.beginPath();
+  c.arc(0,0,radius*.16,0,Math.PI*2);
+  c.fillStyle="#202326";
+  c.fill();
+  c.strokeStyle="#e3d076";
+  c.lineWidth=6;
+  c.stroke();
+
+  c.fillStyle="#f6e9bd";
+  c.font="900 20px monospace";
+  c.textAlign="center";
+  c.textBaseline="middle";
+  c.fillText("SPIN",0,1);
+
+  c.restore();
+}
+
+function openGameShowWheelV3732(){
+  const overlay=$("gameShowWheelOverlayV3732");
+  const close=$("gameShowWheelCloseV3732");
+  const status=$("gameShowWheelStatusV3732");
+  if(!overlay)return;
+
+  overlay.classList.remove("hidden");
+  close?.classList.add("hidden");
+  if(status)status.textContent="룰렛이 회전합니다...";
+  drawGameShowWheelV3732(gameShowWheelRotationV3732);
+}
+
+function animateGameShowWheelToResultV3732(result,done=()=>{}){
+  const matches=GAME_SHOW_SECTORS_V3732
+    .map((s,i)=>s.key===result?i:-1)
+    .filter(i=>i>=0);
+
+  const targetIndex=matches.length
+    ? matches[Math.floor(Math.random()*matches.length)]
+    : 0;
+
+  const count=GAME_SHOW_SECTORS_V3732.length;
+  const step=Math.PI*2/count;
+
+  // 포인터는 화면 위쪽(-PI/2). draw 함수 내부에서 -PI/2 기준 회전하므로
+  // 해당 섹터의 중앙이 포인터에 오도록 최종 각도를 계산.
+  const centerAngle=(targetIndex+.5)*step;
+  const normalized=((gameShowWheelRotationV3732%(Math.PI*2))+Math.PI*2)%(Math.PI*2);
+  let targetBase=(-centerAngle)%(Math.PI*2);
+  if(targetBase<0)targetBase+=Math.PI*2;
+
+  let delta=targetBase-normalized;
+  if(delta<0)delta+=Math.PI*2;
+
+  const extraTurns=6+Math.floor(Math.random()*3);
+  const totalDelta=extraTurns*Math.PI*2+delta;
+  const startRot=gameShowWheelRotationV3732;
+  const duration=4600;
+  const start=performance.now();
+
+  gameShowWheelAnimatingV3732=true;
+
+  const tick=now=>{
+    const t=Math.min(1,(now-start)/duration);
+    const eased=1-Math.pow(1-t,4);
+    gameShowWheelRotationV3732=startRot+totalDelta*eased;
+    drawGameShowWheelV3732(gameShowWheelRotationV3732);
+
+    if(t<1){
+      requestAnimationFrame(tick);
+      return;
+    }
+
+    gameShowWheelAnimatingV3732=false;
+    done();
+  };
+
+  requestAnimationFrame(tick);
+}
+
+function finishGameShowWheelV3732(result){
+  const status=$("gameShowWheelStatusV3732");
+  const close=$("gameShowWheelCloseV3732");
+
+  if(status){
+    status.textContent=`결과 · ${radioResultTextV372(result)}`;
+  }
+  close?.classList.remove("hidden");
+}
+
 function radioResultTextV372(result){
   return ({
     loseHealth:"체력이 크게 감소했습니다.",
@@ -2354,7 +2513,10 @@ function renderRadioPanelV372(){
   signal.textContent=
     !s.hasRadio ? "RADIO MISSING" :
     s.interference ? "████ STATIC / JAMMED ████" :
-    ev ? "SIGNAL LOCKED" : "SCANNING";
+    s.pendingSignal ? `${s.pendingSignal.channel} FM · SIGNAL CAPTURED` :
+    s.pendingStart ? `${s.pendingStart.channel} FM · EVENT PENDING` :
+    ev ? "RESPONSE REQUIRED" :
+    "READY";
 
   if(!s.hasRadio){
     event.innerHTML="60초 아이템 수집 단계에서 <b>라디오</b>를 가져와야 사용할 수 있습니다.";
@@ -2363,8 +2525,18 @@ function renderRadioPanelV372(){
     event.innerHTML="<b>RADIO INTERFERENCE</b><br>강한 재밍 때문에 다른 방송을 들을 수 없습니다.";
     actions.innerHTML=`
       <button data-radio-clear="1">임시 신호 복구</button>
-      <small>공구함 1 + 배터리 1 사용. 향후 전파 방해 탐사지의 안테나 3개 시스템으로 교체 예정.</small>
+      <small>공구함 1 + 배터리 1 사용.</small>
     `;
+  }else if(s.pendingSignal){
+    event.innerHTML=
+      `<b>${s.pendingSignal.channel} FM · ${s.pendingSignal.title}</b><br>`+
+      `신호를 포착했습니다. <b>DAY ${s.pendingSignal.decisionDay}</b>에 상대가 다시 호출합니다.`;
+    actions.innerHTML="";
+  }else if(s.pendingStart){
+    event.innerHTML=
+      `<b>${s.pendingStart.title} 수락 완료</b><br>`+
+      `실제 이벤트는 <b>DAY ${s.pendingStart.startDay}</b>에 시작됩니다.`;
+    actions.innerHTML="";
   }else if(ev){
     const body={
       gameShow:"벙커를 돌며 진행되는 수상한 게임쇼 방송입니다. 참가하면 한 번의 룰렛 결과를 받아야 합니다.",
@@ -2395,7 +2567,29 @@ function renderRadioPanelV372(){
     h.outcome==="mold" ? `<div>방문자: 이상 증상 · 벙커 위생 지속 감소</div>` :
     `<div>방문자: 사망</div>`;
 
+  const timelineText=
+    s.pendingSignal
+      ? `<div class="radio-progress-v3732">
+           <b>① 주파수 포착 완료</b>
+           <span>② DAY ${s.pendingSignal.decisionDay} 응답 대기</span>
+           <span>③ 수락 시 다음 DAY 이벤트 시작</span>
+         </div>`
+      : s.currentEvent?.phase==="decision"
+      ? `<div class="radio-progress-v3732">
+           <span>① 주파수 포착 완료</span>
+           <b>② 수락 / 거절 선택</b>
+           <span>③ 수락 시 다음 DAY 이벤트 시작</span>
+         </div>`
+      : s.pendingStart
+      ? `<div class="radio-progress-v3732">
+           <span>① 주파수 포착 완료</span>
+           <span>② 수락 완료</span>
+           <b>③ DAY ${s.pendingStart.startDay} 이벤트 시작 대기</b>
+         </div>`
+      : "";
+
   special.innerHTML=`
+    ${timelineText}
     ${homelessText}
     ${h?.active ? '<button data-homeless-expel="1">방문자 내보내기</button>' : ''}
     ${s.unlocks?.sos ? '<div>📍 SOS Location 좌표 확보</div>' : ''}
@@ -2456,6 +2650,9 @@ document.querySelectorAll("[data-radio-channel]").forEach(btn=>{
       }
       radioStateV372=r.state||radioStateV372;
       renderRadioPanelV372();
+      if(r.scheduled){
+        toast(`주파수 포착 · DAY ${r.decisionDay}에 응답 요청이 옵니다.`);
+      }
     });
   });
 });
@@ -2483,18 +2680,29 @@ if($("radioEventActionsV372")) $("radioEventActionsV372").onclick=e=>{
   }
 
   if(e.target.dataset.gameshowSpin){
+    if(gameShowWheelAnimatingV3732)return;
+
+    // 서버가 결과를 확정한 뒤, 그 결과 칸까지 실제 룰렛이 회전한다.
     ioClient.emit("v372-gameshow-spin",roomIdentityPayloadV3723(),r=>{
       if(!r?.ok)return toast(r?.message||"룰렛 오류");
-      bunkerStock=r.bunkerStock||bunkerStock;
-      weapons=r.weapons||weapons;
-      radioStateV372=r.state||radioStateV372;
-      if(r.stats){
-        hp=r.stats.hp??hp;
-        playerSick=!!r.stats.sick;
-      }
-      updateStatusUI();
-      renderRadioPanelV372();
-      toast("게임쇼 결과: "+radioResultTextV372(r.result));
+
+      gameShowWheelPendingResultV3732=r;
+      openGameShowWheelV3732();
+
+      animateGameShowWheelToResultV3732(r.result,()=>{
+        bunkerStock=r.bunkerStock||bunkerStock;
+        weapons=r.weapons||weapons;
+        radioStateV372=r.state||radioStateV372;
+
+        if(r.stats){
+          hp=r.stats.hp??hp;
+          playerSick=!!r.stats.sick;
+        }
+
+        updateStatusUI();
+        renderRadioPanelV372();
+        finishGameShowWheelV3732(r.result);
+      });
     });
     return;
   }
@@ -2509,6 +2717,20 @@ if($("radioEventActionsV372")) $("radioEventActionsV372").onclick=e=>{
     });
   }
 };
+
+
+if($("gameShowWheelCloseV3732")){
+  $("gameShowWheelCloseV3732").onclick=()=>{
+    if(gameShowWheelAnimatingV3732)return;
+    $("gameShowWheelOverlayV3732")?.classList.add("hidden");
+
+    const r=gameShowWheelPendingResultV3732;
+    if(r){
+      toast("게임쇼 결과: "+radioResultTextV372(r.result));
+    }
+    gameShowWheelPendingResultV3732=null;
+  };
+}
 
 if($("radioSpecialV372")) $("radioSpecialV372").onclick=e=>{
   if(!e.target.dataset.homelessExpel)return;
@@ -2543,6 +2765,34 @@ ioClient.on("disconnect",reason=>{
 });
 
 ioClient.on("v372-radio-ready",()=>{});
+
+ioClient.on("v3731-radio-decision",payload=>{
+  radioStateV372=payload?.state||radioStateV372;
+
+  const ev=payload?.event;
+  if(!ev)return;
+
+  // 게임 중 어디에 있든 라디오 응답 화면을 앞으로 띄운다.
+  const panel=$("radioPanelV372");
+  if(panel){
+    panel.classList.remove("hidden");
+    panel.style.zIndex="10000";
+  }
+
+  renderRadioPanelV372();
+  toast(`📻 ${ev.channel} FM · 응답 요청 도착`);
+});
+
+ioClient.on("v3731-radio-started",payload=>{
+  radioStateV372=payload?.state||radioStateV372;
+  const title=payload?.title||payload?.type||"RADIO EVENT";
+  toast(`📻 DAY ${payload?.day} · ${title} 이벤트 시작`);
+  renderRadioPanelV372();
+});
+
+ioClient.on("v3731-radio-event-failed",payload=>{
+  toast(payload?.message||"라디오 이벤트를 시작하지 못했습니다.");
+});
 
 ioClient.on("v372-radio-event",state=>{
   radioStateV372=state||radioStateV372;
