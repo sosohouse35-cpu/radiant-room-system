@@ -722,6 +722,7 @@ var currentWeaponCooldown=0;
 var ventRenderRunning=false;
 var hallucination={active:false,x:0,y:0,start:0,duration:4200,damage:0};
 var lastBunkerSend=0;
+var lastBunkerNetStateV3730={x:null,y:null,fx:null,fy:null,lastHeartbeat:0};
 var bunkerKeys=new Set();
 var bunkerRunning=false;
 updateV32HudVisibility();
@@ -2257,14 +2258,27 @@ function bunkerMoveLoop(){
   bunkerNearestObject();
 
   const now=performance.now();
-  if(now-lastBunkerSend>70){
-    ioClient.emit("bunker-move",{
+  const net=lastBunkerNetStateV3730;
+  const moved=
+    net.x===null ||
+    Math.abs(bunkerPlayer.x-net.x)>.15 ||
+    Math.abs(bunkerPlayer.y-net.y)>.15 ||
+    Math.abs(bunkerFacing.x-net.fx)>.02 ||
+    Math.abs(bunkerFacing.y-net.fy)>.02;
+  const heartbeat=now-(net.lastHeartbeat||0)>=1000;
+
+  if((moved && now-lastBunkerSend>160) || heartbeat){
+    ioClient.emit("bunker-move",roomIdentityPayloadV3723({
+      scene:"bunker",
       x:bunkerPlayer.x,
       y:bunkerPlayer.y,
       facingX:bunkerFacing.x,
       facingY:bunkerFacing.y
-    });
+    }));
     lastBunkerSend=now;
+    net.x=bunkerPlayer.x; net.y=bunkerPlayer.y;
+    net.fx=bunkerFacing.x; net.fy=bunkerFacing.y;
+    net.lastHeartbeat=now;
   }
 
   requestAnimationFrame(bunkerMoveLoop);
@@ -2519,9 +2533,12 @@ ioClient.on("connect",()=>{
   }
 });
 
-ioClient.on("disconnect",()=>{
-  if(bunkerRunning){
-    toast("서버 연결이 끊겼습니다. 재연결을 시도합니다.");
+var lastDisconnectToastV3730=0;
+ioClient.on("disconnect",reason=>{
+  console.warn("[SOCKET DISCONNECT]",reason);
+  if(bunkerRunning && Date.now()-lastDisconnectToastV3730>10000){
+    lastDisconnectToastV3730=Date.now();
+    toast("서버 재연결 중");
   }
 });
 
@@ -4033,6 +4050,7 @@ function updateMobileActionVisibility(scene){
 
 function enterBunkerScene(){
   document.body.classList.remove("chat-open");
+  lastBunkerNetStateV3730={x:null,y:null,fx:null,fy:null,lastHeartbeat:0};
 
   // 네트워크 오류가 있어도 검은 페이드 화면에 영구 고정되지 않도록 안전 해제.
   setTimeout(()=>{
