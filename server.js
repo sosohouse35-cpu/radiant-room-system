@@ -784,6 +784,44 @@ const HOSPITAL_TRIPWIRES=[
   {x1:1780,y1:1220,x2:1970,y2:1220}
 ];
 
+
+const SOS_POINTS_V3733=[
+  {x:180,y:170},{x:350,y:180},{x:530,y:190},{x:710,y:185},{x:890,y:175},
+  {x:180,y:370},{x:360,y:390},{x:560,y:380},{x:760,y:390},{x:960,y:380},
+  {x:250,y:620},{x:470,y:650},{x:700,y:640},{x:930,y:630}
+];
+function makeSOSItemsV3733(){
+  const types=["medkit","water","water","beans","battery","tape","flashlight","map","soap"];
+  const pts=shuffle(SOS_POINTS_V3733);
+  return types.map((type,i)=>({
+    id:`sos-${Date.now()}-${i}`,
+    type,slots:DEFS[type]?.slots||1,
+    x:pts[i%pts.length].x,y:pts[i%pts.length].y,taken:false
+  }));
+}
+
+const INTERFERENCE_POINTS_V3733=[
+  {x:180,y:180},{x:350,y:190},{x:520,y:180},{x:700,y:190},{x:880,y:180},
+  {x:220,y:420},{x:420,y:430},{x:620,y:420},{x:820,y:430},{x:1010,y:420},
+  {x:300,y:690},{x:550,y:700},{x:800,y:690},{x:1020,y:690}
+];
+function makeInterferenceItemsV3733(){
+  const types=["battery","battery","toolbox","tape","tape","water","beans","medkit","flashlight"];
+  const pts=shuffle(INTERFERENCE_POINTS_V3733);
+  return types.map((type,i)=>({
+    id:`jam-${Date.now()}-${i}`,
+    type,slots:DEFS[type]?.slots||1,
+    x:pts[i%pts.length].x,y:pts[i%pts.length].y,taken:false
+  }));
+}
+function makeInterferenceAntennasV3733(){
+  return [
+    {id:"antennaA",x:310,y:250,disabled:false},
+    {id:"antennaB",x:760,y:250,disabled:false},
+    {id:"antennaC",x:820,y:680,disabled:false}
+  ];
+}
+
 function makeHospitalItems(){
   const points=shuffle(HOSPITAL_POINTS).filter(p=>hospitalWalkableV26(p.x,p.y,8));
   const types=[
@@ -1621,7 +1659,8 @@ io.on("connection",s=>{
 
 
  s.on("request-expedition",(payload={},cb=()=>{})=>{
-  const r=rooms.get(socketRoom.get(s.id)),p=r?.players.get(s.id);
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
   if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
   if(!p.inBunker)return cb({ok:false,message:"벙커 안에서만 탐사를 시작할 수 있습니다."});
 
@@ -1637,11 +1676,21 @@ io.on("connection",s=>{
   const hasMap=(r.bunkerStock.map||0)>0;
   let location=String(payload?.location||"");
 
+  const unlockedSpecial=[];
+  if(r.radioState?.unlocks?.sos)unlockedSpecial.push("sos");
+  if(r.radioState?.unlocks?.interference)unlockedSpecial.push("interference");
+
   if(hasMap){
-    if(!["grocery","hospital"].includes(location))location="grocery";
+    const allowed=["grocery","hospital",...unlockedSpecial];
+    if(!allowed.includes(location))location="grocery";
   }else{
     location=pick(["grocery","hospital"]);
   }
+
+  if(location==="sos" && !r.radioState?.unlocks?.sos)
+    return cb({ok:false,message:"SOS 좌표가 아직 해금되지 않았습니다."});
+  if(location==="interference" && !r.radioState?.unlocks?.interference)
+    return cb({ok:false,message:"전파 방해 좌표가 아직 해금되지 않았습니다."});
 
   r.expeditionInvite={
     leaderId:s.id,
@@ -1670,19 +1719,22 @@ io.on("connection",s=>{
 
     room.expeditionLocation=location;
     room.expeditionItems=
-      location==="hospital"
-        ? makeHospitalItems()
-        : makeGroceryItems();
+      location==="hospital" ? makeHospitalItems() :
+      location==="sos" ? makeSOSItemsV3733() :
+      location==="interference" ? makeInterferenceItemsV3733() :
+      makeGroceryItems();
 
     room.expeditionMutants=
-      location==="hospital"
-        ? []
-        : makeMutants();
+      location==="hospital" ? [] :
+      location==="sos" ? makeMutants().slice(0,2) :
+      location==="interference" ? makeMutants().slice(0,3) :
+      makeMutants();
 
     room.hospitalAbomination=
-      location==="hospital"
-        ? makeHospitalAbomination()
-        : null;
+      location==="hospital" ? makeHospitalAbomination() : null;
+
+    room.interferenceAntennas=
+      location==="interference" ? makeInterferenceAntennasV3733() : [];
 
     const returnPoint=expeditionReturnPoint(room);
     const handLimit=(room.bunkerStock.backpack||0)>0 ? 8 : 4;
@@ -1718,6 +1770,7 @@ io.on("connection",s=>{
         const mx=(t.x1+t.x2)/2,my=(t.y1+t.y2)/2;
         return hospitalWalkableV26(mx,my,4);
       }):[],
+      interferenceAntennas:room.interferenceAntennas||[],
       returnPoint,
       handLimit,
       hasGasMask,
@@ -1749,6 +1802,35 @@ io.on("connection",s=>{
  });
 
 
+
+
+ s.on("disable-interference-antenna",(payload={},cb=()=>{})=>{
+  const resolved=resolveRoomPlayer(s,payload);
+  const r=resolved.room,p=resolved.player;
+  if(!r||!p||!p.inExpedition||r.expeditionLocation!=="interference")
+    return cb({ok:false,message:"전파 방해 탐사 중이 아닙니다."});
+
+  const antenna=(r.interferenceAntennas||[]).find(a=>a.id===payload.antennaId);
+  if(!antenna)return cb({ok:false,message:"안테나를 찾을 수 없습니다."});
+  if(antenna.disabled)return cb({ok:false,message:"이미 해제된 안테나입니다."});
+
+  const dist=Math.hypot((p.expeditionX+15)-antenna.x,(p.expeditionY+15)-antenna.y);
+  if(dist>95)return cb({ok:false,message:"안테나와 너무 멉니다."});
+
+  antenna.disabled=true;
+  const disabled=(r.interferenceAntennas||[]).filter(a=>a.disabled).length;
+  const total=(r.interferenceAntennas||[]).length;
+
+  if(disabled>=total){
+    r.radioState.interference=false;
+    r.radioState.completed.interference=true;
+    radioPushHistoryV372(r,"전파 방해 기지 안테나 3개 해제 · 재밍 종료");
+    io.to(r.code).emit("v372-radio-state",radioPublicStateV372(r));
+  }
+
+  io.to(r.code).emit("interference-antennas",r.interferenceAntennas);
+  cb({ok:true,disabled,total,antennas:r.interferenceAntennas,cleared:disabled>=total});
+ });
 
  s.on("expedition-jump",(payload={},cb=()=>{})=>{
   const resolved=resolveRoomPlayer(s,payload);
