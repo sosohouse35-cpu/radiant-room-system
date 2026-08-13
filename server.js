@@ -26,6 +26,33 @@ app.get("/healthz",(req,res)=>{
 
 const rooms=new Map(), socketRoom=new Map();
 
+server.keepAliveTimeout=120000;
+server.headersTimeout=125000;
+server.requestTimeout=0;
+
+function safeInterval(fn,ms,label="interval"){
+  return globalThis.setInterval(()=>{
+    try{
+      const result=fn();
+      if(result && typeof result.catch==="function"){
+        result.catch(err=>console.error(`[SAFE ${label}] async error`,err?.stack||err));
+      }
+    }catch(err){
+      console.error(`[SAFE ${label}] error`,err?.stack||err);
+    }
+  },ms);
+}
+
+process.on("unhandledRejection",err=>{
+  console.error("[UNHANDLED REJECTION]",err?.stack||err);
+});
+process.on("uncaughtException",err=>{
+  console.error("[UNCAUGHT EXCEPTION]",err?.stack||err);
+});
+io.engine.on("connection_error",err=>{
+  console.error("[ENGINE CONNECTION ERROR]",err?.code,err?.message,err?.context||"");
+});
+
 
 // =========================================================
 // VERSION 31 - NEON POSTGRES ACCOUNT SYSTEM
@@ -44,7 +71,7 @@ async function initDatabase(){
   admin_god_mode BOOLEAN NOT NULL DEFAULT FALSE,admin_full_bright BOOLEAN NOT NULL DEFAULT FALSE,
   login_token TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),last_login_at TIMESTAMPTZ)`);
  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS accounts_login_token_idx ON accounts(login_token) WHERE login_token IS NOT NULL`);
- console.log("[V31] Neon DB ready");
+ console.log("[AFTERGLOW V37.3.0] Neon DB ready");
 }
 function safeAccountId(v){return String(v||"").trim().toLowerCase().replace(/[^a-z0-9_-]/g,"").slice(0,24)}
 function safeDisplayName(v){return String(v||"").replace(/[<>]/g,"").trim().slice(0,14)}
@@ -3046,7 +3073,7 @@ function v3716BreachExteriorThreats(room){
 // =========================================================
 // 지속 스탯: DAY와 무관하게 계속 감소
 // =========================================================
-setInterval(()=>{
+safeInterval(()=>{
   for(const r of rooms.values()){
     for(const p of r.players.values()){
       if(!p.inBunker || (p.hp??0)<=0)continue;
@@ -3074,7 +3101,7 @@ setInterval(()=>{
 },STAT_TICK_MS);
 
 // 스탯이 위험하면 DAY 변경과 무관하게 지속 피해
-setInterval(()=>{
+safeInterval(()=>{
   for(const r of rooms.values()){
     const closedVents=(r.vents||[]).filter(v=>v.closed).length;
 
@@ -3126,7 +3153,7 @@ setInterval(()=>{
 // 세 환풍구는 서로 완전히 독립적으로 이벤트를 생성한다.
 // 최대 3개 환풍구에 동시에 3개 이벤트가 존재할 수 있음.
 // =========================================================
-setInterval(()=>{
+safeInterval(()=>{
   const now=Date.now();
 
   for(const r of rooms.values()){
@@ -3201,7 +3228,7 @@ setInterval(()=>{
 // =========================================================
 // 벙커 내부 Spider / Rat / Fumigator AI
 // =========================================================
-setInterval(()=>{
+safeInterval(()=>{
   const now=Date.now();
 
   for(const r of rooms.values()){
@@ -3278,7 +3305,7 @@ setInterval(()=>{
 // =========================================================
 // 탐사 sickness 지속 피해
 // =========================================================
-setInterval(()=>{
+safeInterval(()=>{
   for(const r of rooms.values()){
     for(const p of r.players.values()){
       if(!p.inExpedition || !p.sick || (p.hp??0)<=0)continue;
@@ -3325,7 +3352,7 @@ function hospitalPatrolDestinationV28(a){
 // patrol: 평상시 순찰
 // investigate: 함정/유리 소리 위치로 빠르게 이동하지만 플레이어를 공격하지 않음
 // chase: 인지 범위에서 움직이는 플레이어를 발견하면 멈칫 없이 즉시 추격, 죽을 때까지 추적
-setInterval(()=>{
+safeInterval(()=>{
   const now=Date.now();
 
   for(const r of rooms.values()){
@@ -3438,7 +3465,7 @@ setInterval(()=>{
 // =========================================================
 // 탐사 돌연변이 AI
 // =========================================================
-setInterval(()=>{
+safeInterval(()=>{
   const now=Date.now();
 
   for(const r of rooms.values()){
@@ -3509,7 +3536,7 @@ setInterval(()=>{
 // =========================================================
 // 서버 기준 DAY 시계
 // =========================================================
-setInterval(()=>{
+safeInterval(()=>{
   const now=Date.now();
 
   for(const r of rooms.values()){
@@ -3547,7 +3574,7 @@ setInterval(()=>{
 // =========================================================
 // V37.2 RADIO EVENT TIMER
 // =========================================================
-setInterval(()=>{
+safeInterval(()=>{
   const now=Date.now();
   for(const r of rooms.values()){
     if(r.status!=="playing" || !r.bunkerSystemsStarted || !r.radioState)continue;
@@ -3597,7 +3624,7 @@ setInterval(()=>{
 
 // V37.1-5 EXTERIOR THREATS - DOOR DEFENSE ATTACK
 // 외부 적은 문 앞에 도착하면 Door Defense를 실제로 공격한다.
-setInterval(()=>{
+safeInterval(()=>{
   const now=Date.now();
 
   for(const r of rooms.values()){
@@ -3730,7 +3757,7 @@ setInterval(()=>{
 
 // V37.0: Door Defense는 시간이 지나면서 천천히 감소.
 // 다음 단계에서 외부 적의 문 공격 피해가 추가된다.
-setInterval(()=>{
+safeInterval(()=>{
   for(const r of rooms.values()){
     if(r.status!=="playing"||!r.bunkerSystemsStarted)continue;
     if(r.doorBreached)continue;
@@ -3744,7 +3771,7 @@ setInterval(()=>{
 },60000);
 
 // V32: 전력/Firewall은 DAY와 무관하게 지속 감소
-setInterval(()=>{
+safeInterval(()=>{
   for(const r of rooms.values()){
     if(r.status!=="playing"||!r.bunkerSystemsStarted)continue;
     r.power=Math.max(0,(r.power??100)-4);
@@ -3753,7 +3780,7 @@ setInterval(()=>{
   }
 },V32_POWER_TICK_MS);
 
-setInterval(()=>{
+safeInterval(()=>{
   for(const r of rooms.values()){
     if(r.status!=="playing"||!r.bunkerSystemsStarted||r.hacked)continue;
     r.firewall=Math.max(0,(r.firewall??6)-1);
@@ -3776,7 +3803,7 @@ async function startServer(){
     const port=Number(process.env.PORT)||3000;
 
     server.listen(port,"0.0.0.0",()=>{
-      console.log(`[VERSION 31] server listening on ${port}`);
+      console.log(`[AFTERGLOW V37.3.0] server listening on ${port}`);
       console.log("[V31] Neon DB ready");
     });
   }catch(e){
