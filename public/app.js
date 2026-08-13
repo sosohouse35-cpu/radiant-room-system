@@ -2630,6 +2630,7 @@ function refreshRadioStateV372(){
     }
 
     renderRadioPanelV372();
+    syncRadioDecisionOverlayV3735(radioStateV372);
   });
 }
 
@@ -2776,6 +2777,7 @@ ioClient.on("connect",()=>{
         if(ok && bunkerRunning){
           refreshOutsideCCTVV37();
           refreshRadioStateV372();
+          setTimeout(()=>syncRadioDecisionOverlayV3735(radioStateV372),250);
         }
       },{scene:bunkerRunning?"bunker":(expeditionRunning?"expedition":"room"),silent:true});
     },250);
@@ -2793,19 +2795,39 @@ ioClient.on("disconnect",reason=>{
 
 ioClient.on("v372-radio-ready",()=>{});
 
-ioClient.on("v3731-radio-decision",payload=>{
-  radioStateV372=payload?.state||radioStateV372;
-  const ev=payload?.event;
-  if(!ev)return;
 
-  // 라디오 패널은 열지 않는다. 게임 화면 위에 별도 응답창만 표시.
-  const panel=$("radioPanelV372");
-  if(panel)panel.classList.add("hidden");
+let radioDecisionShowingV3735=false;
+let radioDecisionEventIdV3735=null;
 
-  $("radioDecisionTitleV3733").textContent=ev.title||"RADIO EVENT";
-  $("radioDecisionChannelV3733").textContent=`${ev.channel||"---"} FM`;
+function showRadioDecisionOverlayV3735(ev){
+  if(!ev || ev.phase!=="decision")return false;
 
-  const text={
+  const overlay=$("radioDecisionOverlayV3733");
+  if(!overlay)return false;
+
+  // 동일 이벤트를 이미 띄운 상태면 중복 생성하지 않음
+  if(
+    radioDecisionShowingV3735 &&
+    radioDecisionEventIdV3735===ev.id &&
+    !overlay.classList.contains("hidden")
+  ){
+    return true;
+  }
+
+  radioDecisionShowingV3735=true;
+  radioDecisionEventIdV3735=ev.id||null;
+
+  // 라디오 패널은 닫고 게임 화면 중앙에만 표시
+  $("radioPanelV372")?.classList.add("hidden");
+
+  const title=$("radioDecisionTitleV3733");
+  const channel=$("radioDecisionChannelV3733");
+  const text=$("radioDecisionTextV3733");
+
+  if(title)title.textContent=ev.title||"RADIO EVENT";
+  if(channel)channel.textContent=`${ev.channel||"---"} FM`;
+
+  const body={
     gameShow:"수상한 게임쇼 방송에서 참가 여부를 묻고 있습니다.",
     sos:"SOS 발신자가 구조 신호에 응답할지 묻고 있습니다.",
     interference:"정체불명의 전파 방해 신호를 추적할지 묻고 있습니다.",
@@ -2813,9 +2835,35 @@ ioClient.on("v3731-radio-decision",payload=>{
     aliens:"정체불명의 발신자가 좌표를 전송하려 합니다."
   }[ev.type]||"라디오 이벤트에 응답하시겠습니까?";
 
-  $("radioDecisionTextV3733").textContent=text;
-  $("radioDecisionOverlayV3733").classList.remove("hidden");
+  if(text)text.textContent=body;
+
+  overlay.classList.remove("hidden");
+  return true;
+}
+
+function syncRadioDecisionOverlayV3735(state=radioStateV372){
+  const ev=state?.currentEvent;
+
+  if(ev?.phase==="decision"){
+    showRadioDecisionOverlayV3735(ev);
+    return;
+  }
+
+  // 서버에서 이미 처리된 경우 남아있는 창 닫기
+  const overlay=$("radioDecisionOverlayV3733");
+  if(overlay && !overlay.classList.contains("hidden")){
+    overlay.classList.add("hidden");
+  }
+  radioDecisionShowingV3735=false;
+  radioDecisionEventIdV3735=null;
+}
+
+ioClient.on("v3731-radio-decision",payload=>{
+  radioStateV372=payload?.state||radioStateV372;
+  const ev=payload?.event||radioStateV372?.currentEvent;
+  showRadioDecisionOverlayV3735(ev);
 });
+
 
 
 function answerRadioDecisionV3733(choice){
@@ -2826,6 +2874,8 @@ function answerRadioDecisionV3733(choice){
     }
     radioStateV372=r.state||radioStateV372;
     $("radioDecisionOverlayV3733")?.classList.add("hidden");
+    radioDecisionShowingV3735=false;
+    radioDecisionEventIdV3735=null;
     renderRadioPanelV372();
     toast(r.message|| (choice==="accept"?"이벤트를 수락했습니다.":"이벤트를 거절했습니다."));
   });
@@ -2853,6 +2903,7 @@ ioClient.on("v372-radio-event",state=>{
 ioClient.on("v372-radio-state",state=>{
   radioStateV372=state||radioStateV372;
   if(!$("radioPanelV372").classList.contains("hidden"))renderRadioPanelV372();
+  syncRadioDecisionOverlayV3735(radioStateV372);
 });
 
 function computerHTML(tab){
@@ -5972,6 +6023,12 @@ ioClient.on("day-changed",d=>{
   }
 
   toast(`DAY ${day}`);
+
+  // DAY 변경 직후 서버의 radio currentEvent를 다시 확인.
+  // decision 이벤트 패킷을 놓쳐도 수락/거절 창을 복구한다.
+  if((bunkerStock.radio||0)>0){
+    setTimeout(refreshRadioStateV372,120);
+  }
 });
 
 
