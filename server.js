@@ -139,19 +139,94 @@ function list(){return [...rooms.values()].filter(r=>r.status==="waiting").map(r
 function emit(r){io.to(r.code).emit("room-updated",view(r));io.emit("room-list",list());if(r.publicLobbyId)emitPublicParties(r.publicLobbyId)}
 function slots(p){return p.hands.reduce((s,t)=>s+(DEFS[t]?.slots||1),0)}
 function makeItems(){
- const out=[], add=(type,p)=>out.push({id:"i"+out.length,type,slots:DEFS[type].slots,...p,taken:false});
- let f=shuffle([...Z.kitchen,...Z.pantry]);
- ["beans","beans","beans","beans","beans","water","water","water","water","water"].forEach((t,i)=>add(t,f[i%f.length]));
- let n=shuffle([...Z.living,...Z.garage,...Z.bedroom2,...Z.study2,...Z.hall2,...Z.attic]);
- ["soap","soap","tape","tape","trap","trap","spray","spray","medkit","medkit","battery","battery","battery","flashlight","flashlight"].forEach((t,i)=>add(t,n[i%n.length]));
- add("mask",pick([...Z.bathroom1,...Z.bathroom2,{floor:1,x:1740,y:620},{floor:2,x:1740,y:620}]));
- add("axe",pick([...Z.garage,...Z.attic,{floor:1,x:1710,y:520}]));
- add("backpack",pick([...Z.bedroom2,{floor:2,x:760,y:300},{floor:2,x:980,y:520}]));
- add("blueprint",pick([{floor:2,x:1120,y:250},{floor:2,x:1270,y:250},{floor:2,x:1420,y:250}]));
- add("toolbox",pick([...Z.garage,{floor:3,x:900,y:520}]));
- add("map",pick([{floor:1,x:1280,y:360},{floor:2,x:1250,y:380},{floor:3,x:1450,y:330}]));
- add("radio",pick([{floor:1,x:1160,y:380},{floor:2,x:1430,y:380},{floor:3,x:1780,y:380}]));
- return out;
+  const out=[];
+
+  function farEnough(p,minDist=76){
+    return !out.some(it=>
+      it.floor===p.floor &&
+      Math.hypot(it.x-p.x,it.y-p.y)<minDist
+    );
+  }
+
+  function findFreePosition(pool){
+    const bases=shuffle(pool);
+
+    // 각 기존 spawn point 주변을 여러 방향으로 시험한다.
+    // 아이템 중심 간 최소 76px를 유지해 그래픽이 서로 겹치지 않게 한다.
+    const offsets=[
+      [0,0],[82,0],[-82,0],[0,82],[0,-82],
+      [82,82],[-82,82],[82,-82],[-82,-82],
+      [125,0],[-125,0],[0,125],[0,-125]
+    ];
+
+    for(const base of bases){
+      for(const [ox,oy] of shuffle(offsets)){
+        const p={
+          floor:base.floor,
+          x:Math.max(95,Math.min(2240,base.x+ox)),
+          y:Math.max(145,Math.min(1320,base.y+oy))
+        };
+        if(farEnough(p))return p;
+      }
+    }
+
+    // 극단적인 경우에만 같은 층에서 격자 후보를 찾는다.
+    const floor=bases[0]?.floor||1;
+    for(let y=190;y<=1280;y+=92){
+      for(let x=130;x<=2200;x+=92){
+        const p={floor,x,y};
+        if(farEnough(p))return p;
+      }
+    }
+
+    // 실제로 도달하기 어려운 fallback. 그래도 좌표 누락은 방지.
+    return {...(bases[0]||{floor:1,x:300,y:300})};
+  }
+
+  function add(type,poolOrPoint){
+    const pool=Array.isArray(poolOrPoint)?poolOrPoint:[poolOrPoint];
+    const p=findFreePosition(pool);
+    out.push({
+      id:"i"+out.length,
+      type,
+      slots:DEFS[type].slots,
+      ...p,
+      taken:false
+    });
+  }
+
+  const foodPool=[...Z.kitchen,...Z.pantry];
+  ["beans","beans","beans","beans","beans","water","water","water","water","water"]
+    .forEach(type=>add(type,foodPool));
+
+  const normalPool=[...Z.living,...Z.garage,...Z.bedroom2,...Z.study2,...Z.hall2,...Z.attic];
+  ["soap","soap","tape","tape","trap","trap","spray","spray",
+   "medkit","medkit","battery","battery","battery","flashlight","flashlight"]
+    .forEach(type=>add(type,normalPool));
+
+  add("mask",[...Z.bathroom1,...Z.bathroom2,
+    {floor:1,x:1740,y:620},{floor:2,x:1740,y:620}]);
+
+  add("axe",[...Z.garage,...Z.attic,{floor:1,x:1710,y:520}]);
+
+  add("backpack",[...Z.bedroom2,
+    {floor:2,x:760,y:300},{floor:2,x:980,y:520}]);
+
+  add("blueprint",[
+    {floor:2,x:1120,y:250},{floor:2,x:1270,y:250},{floor:2,x:1420,y:250}
+  ]);
+
+  add("toolbox",[...Z.garage,{floor:3,x:900,y:520}]);
+
+  add("map",[
+    {floor:1,x:1280,y:360},{floor:2,x:1250,y:380},{floor:3,x:1450,y:330}
+  ]);
+
+  add("radio",[
+    {floor:1,x:1160,y:380},{floor:2,x:1430,y:380},{floor:3,x:1780,y:380}
+  ]);
+
+  return out;
 }
 function leave(s){
  const c=socketRoom.get(s.id),r=rooms.get(c); if(!c||!r)return;
@@ -1180,7 +1255,9 @@ io.on("connection",s=>{
     // V37.2 Radio
     radioState:{
       currentEvent:null,
-      nextEventAt:Date.now()+45000,
+      pendingSignal:null,
+      pendingStart:null,
+      nextEventAt:0,
       interference:false,
       history:[],
       unlocks:{sos:false,interference:false,aliens:false},
@@ -2299,7 +2376,10 @@ function radioPublicStateV372(r){
   return {
     hasRadio:(r.bunkerStock?.radio||0)>0,
     currentEvent:rs.currentEvent?{...rs.currentEvent}:null,
-    nextEventAt:rs.nextEventAt||0,
+    pendingSignal:rs.pendingSignal?{...rs.pendingSignal}:null,
+    pendingStart:rs.pendingStart?{...rs.pendingStart}:null,
+    currentDay:r.day||1,
+    nextEventAt:0,
     interference:!!rs.interference,
     history:(rs.history||[]).slice(-8),
     unlocks:{...(rs.unlocks||{})},
@@ -2307,7 +2387,7 @@ function radioPublicStateV372(r){
     homeless:rs.homeless?{...rs.homeless}:null,
     gameShow:rs.gameShow?{...rs.gameShow}:null,
     alienRoute:!!rs.alienRoute,
-    selectedChannel:rs.currentEvent?.channel||null
+    selectedChannel:rs.currentEvent?.channel||rs.pendingSignal?.channel||rs.pendingStart?.channel||null
   };
 }
 
@@ -2345,6 +2425,83 @@ function radioCreateEventV372(r,type=null){
   radioPushHistoryV372(r,`${rs.currentEvent.title} 신호 수신`);
   io.to(r.code).emit("v372-radio-event",radioPublicStateV372(r));
   return rs.currentEvent;
+}
+
+function radioStartAcceptedEventV3731(r,pending){
+  if(!r?.radioState || !pending)return;
+  const rs=r.radioState;
+  const type=pending.type;
+  const p=[...r.players.values()].find(x=>x.inBunker&&(x.hp??0)>0)
+    || [...r.players.values()][0];
+
+  if(type==="gameShow"){
+    rs.gameShow={active:true,spun:false,acceptedAt:pending.acceptedAt,startedDay:r.day};
+    radioPushHistoryV372(r,`DAY ${r.day} · GAME SHOW 시작`);
+  }
+
+  if(type==="sos"){
+    if(p){
+      p.sanityStat=Math.max(0,(p.sanityStat??100)-35);
+      io.to(p.id).emit("personal-stats",{
+        hp:p.hp,hunger:p.hunger,thirst:p.thirst,hygiene:p.hygiene,
+        fatigue:p.fatigue,sanityStat:p.sanityStat
+      });
+    }
+    rs.unlocks.sos=true;
+    rs.completed.sos=true;
+    radioPushHistoryV372(r,`DAY ${r.day} · SOS 해독 완료 · 탐사지 좌표 확보`);
+  }
+
+  if(type==="interference"){
+    rs.interference=true;
+    rs.unlocks.interference=true;
+    rs.completed.interference=true;
+    radioPushHistoryV372(r,`DAY ${r.day} · RADIO INTERFERENCE 시작 · 좌표 확보`);
+  }
+
+  if(type==="homeless"){
+    if((r.bunkerStock.beans||0)>=2 && (r.bunkerStock.water||0)>=2){
+      r.bunkerStock.beans-=2;
+      r.bunkerStock.water-=2;
+      rs.homeless={
+        active:true,
+        resolved:false,
+        outcome:null,
+        arrivedAt:Date.now(),
+        resolveAt:Date.now()+60000
+      };
+      rs.completed.homeless=true;
+      radioPushHistoryV372(r,`DAY ${r.day} · 방문자가 벙커에 도착함`);
+      io.to(r.code).emit("bunker-state",{
+        bunkerStock:r.bunkerStock,power:r.power,security:r.security
+      });
+    }else{
+      rs.completed.homeless=true;
+      radioPushHistoryV372(r,`DAY ${r.day} · 방문자 이벤트 실패 · 식량/물이 부족함`);
+      io.to(r.code).emit("v3731-radio-event-failed",{
+        type,
+        message:"방문자가 도착했지만 통조림 2개와 물 2개가 없어 받아들이지 못했습니다."
+      });
+    }
+  }
+
+  if(type==="aliens"){
+    rs.unlocks.aliens=true;
+    rs.alienRoute=true;
+    rs.completed.aliens=true;
+    radioPushHistoryV372(r,`DAY ${r.day} · UNKNOWN CHANNEL 좌표가 활성화됨`);
+  }
+
+  rs.pendingStart=null;
+
+  io.to(r.code).emit("v3731-radio-started",{
+    type,
+    title:pending.title,
+    channel:pending.channel,
+    day:r.day,
+    state:radioPublicStateV372(r)
+  });
+  io.to(r.code).emit("v372-radio-state",radioPublicStateV372(r));
 }
 
 function radioScheduleNextV372(r,min=65000,max=125000){
@@ -2576,141 +2733,100 @@ function v3716BreachExteriorThreats(room){
  s.on("v372-radio-tune",(d={},cb=()=>{})=>{
   const resolved=resolveRoomPlayer(s,d);
   const r=resolved.room,p=resolved.player;
+
   if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
   if(!p.inBunker)return cb({ok:false,message:"벙커 안에서만 라디오를 사용할 수 있습니다."});
-  if((r.bunkerStock.radio||0)<=0)return cb({ok:false,message:"라디오가 없습니다. 60초 수집 단계에서 라디오를 가져와야 합니다."});
+  if((r.bunkerStock.radio||0)<=0)return cb({ok:false,message:"라디오가 없습니다."});
   if((r.power??0)<=0)return cb({ok:false,message:"전력이 없어 라디오가 작동하지 않습니다."});
+
+  const rs=r.radioState;
+  if(rs.interference){
+    return cb({ok:false,message:"전파 방해 상태에서는 다른 주파수를 잡을 수 없습니다."});
+  }
+  if(rs.pendingSignal || rs.currentEvent || rs.pendingStart){
+    return cb({ok:false,message:"이미 처리 중인 라디오 신호가 있습니다."});
+  }
 
   const channel=String(d.channel||"");
   const preset=RADIO_CHANNELS_V3722[channel];
   if(!preset)return cb({ok:false,message:"등록되지 않은 주파수입니다."});
 
-  // 재밍 상태에서는 interference 채널만 다시 들을 수 있음.
-  if(r.radioState.interference && preset.type!=="interference"){
-    return cb({ok:false,message:"강한 전파 방해 때문에 다른 채널을 수신할 수 없습니다."});
-  }
-
-  // Aliens? 채널은 일반 이벤트 팝업이 아니라 특수 루트 UI를 연다.
-  if(preset.type==="aliens"){
-    r.radioState.currentEvent={
-      id:`radio-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-      type:"aliens",
-      title:"ALIENS?",
-      channel,
-      createdAt:Date.now()
-    };
-    radioPushHistoryV372(r,`${channel} FM · ALIENS? 신호 수신`);
-    io.to(r.code).emit("v372-radio-event",radioPublicStateV372(r));
-    return cb({ok:true,state:radioPublicStateV372(r)});
-  }
-
-  if(r.radioState.currentEvent){
-    // 다른 채널을 돌리면 현재 신호를 교체.
-    r.radioState.currentEvent=null;
-  }
-
-  const type=preset.type;
-  r.radioState.currentEvent={
-    id:`radio-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
-    type,
+  rs.pendingSignal={
+    id:`signal-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+    type:preset.type,
     title:preset.title,
     channel,
-    createdAt:Date.now()
+    tunedDay:r.day,
+    decisionDay:r.day+1
   };
 
-  radioPushHistoryV372(r,`${channel} FM · ${preset.title} 수신`);
-  io.to(r.code).emit("v372-radio-event",radioPublicStateV372(r));
-  cb({ok:true,state:radioPublicStateV372(r)});
+  radioPushHistoryV372(
+    r,
+    `DAY ${r.day} · ${channel} FM 포착 · DAY ${r.day+1} 응답 예정`
+  );
+
+  io.to(r.code).emit("v372-radio-state",radioPublicStateV372(r));
+  cb({
+    ok:true,
+    scheduled:true,
+    decisionDay:r.day+1,
+    state:radioPublicStateV372(r)
+  });
  });
 
  s.on("v372-radio-choice",(d={},cb=()=>{})=>{
   const resolved=resolveRoomPlayer(s,d);
   const r=resolved.room,p=resolved.player;
+
   if(!r||!p)return cb({ok:false,message:"방 정보가 없습니다."});
   if((r.bunkerStock.radio||0)<=0)return cb({ok:false,message:"라디오가 없습니다."});
 
   const rs=r.radioState;
   const ev=rs.currentEvent;
-  if(!ev)return cb({ok:false,message:"처리할 라디오 이벤트가 없습니다."});
+
+  if(!ev || ev.phase!=="decision"){
+    return cb({ok:false,message:"현재 응답할 라디오 호출이 없습니다."});
+  }
 
   const accept=d.choice==="accept";
-  const type=ev.type;
 
-  if(type==="aliens"){
-    if(!accept){
-      radioPushHistoryV372(r,"107.9 FM · ALIENS? 신호 무시");
-      rs.currentEvent=null;
-      io.to(r.code).emit("v372-radio-state",radioPublicStateV372(r));
-      return cb({ok:true,state:radioPublicStateV372(r)});
-    }
-
+  if(!accept){
+    radioPushHistoryV372(r,`DAY ${r.day} · ${ev.title} 거절`);
     rs.currentEvent=null;
     io.to(r.code).emit("v372-radio-state",radioPublicStateV372(r));
     return cb({
       ok:true,
-      aliens:true,
+      accepted:false,
       state:radioPublicStateV372(r),
-      message:"UNKNOWN CHANNEL 버튼에서 구조 신호 루트를 시작할 수 있습니다."
+      message:"라디오 요청을 거절했습니다."
     });
   }
 
-  if(!accept){
-    radioPushHistoryV372(r,`${ev.title} 무시`);
-    rs.completed[type]=true;
-    rs.currentEvent=null;
-    radioScheduleNextV372(r);
-    io.to(r.code).emit("v372-radio-state",radioPublicStateV372(r));
-    return cb({ok:true,state:radioPublicStateV372(r),message:"신호를 무시했습니다."});
-  }
+  rs.pendingStart={
+    id:ev.id,
+    type:ev.type,
+    title:ev.title,
+    channel:ev.channel,
+    acceptedAt:Date.now(),
+    acceptedDay:r.day,
+    startDay:r.day+1
+  };
+  rs.currentEvent=null;
 
-  if(type==="gameShow"){
-    rs.gameShow={active:true,spun:false,acceptedAt:Date.now()};
-    rs.currentEvent=null;
-    radioPushHistoryV372(r,"게임쇼 참가 수락");
-  }
+  radioPushHistoryV372(
+    r,
+    `DAY ${r.day} · ${ev.title} 수락 · DAY ${r.day+1} 이벤트 시작 예정`
+  );
 
-  if(type==="sos"){
-    p.sanityStat=Math.max(0,(p.sanityStat??100)-35);
-    rs.unlocks.sos=true;
-    rs.completed.sos=true;
-    rs.currentEvent=null;
-    radioPushHistoryV372(r,"SOS 신호 해독 · SOS 탐사지 좌표 확보");
-    io.to(p.id).emit("personal-stats",{
-      hp:p.hp,hunger:p.hunger,thirst:p.thirst,hygiene:p.hygiene,
-      fatigue:p.fatigue,sanityStat:p.sanityStat
-    });
-  }
-
-  if(type==="interference"){
-    rs.interference=true;
-    rs.unlocks.interference=true;
-    rs.completed.interference=true;
-    rs.currentEvent=null;
-    radioPushHistoryV372(r,"라디오 재밍 시작 · 전파 방해 탐사지 좌표 확보");
-  }
-
-  if(type==="homeless"){
-    if((r.bunkerStock.beans||0)<2 || (r.bunkerStock.water||0)<2){
-      return cb({ok:false,message:"받아들이려면 통조림 2개와 물 2개가 필요합니다."});
-    }
-    r.bunkerStock.beans-=2;
-    r.bunkerStock.water-=2;
-    rs.homeless={
-      active:true,
-      resolved:false,
-      outcome:null,
-      arrivedAt:Date.now(),
-      resolveAt:Date.now()+60000
-    };
-    rs.completed.homeless=true;
-    rs.currentEvent=null;
-    radioPushHistoryV372(r,"방문자를 벙커에 받아들임");
-    io.to(r.code).emit("bunker-state",{bunkerStock:r.bunkerStock,power:r.power,security:r.security});
-  }
-
-  radioScheduleNextV372(r);
   io.to(r.code).emit("v372-radio-state",radioPublicStateV372(r));
-  cb({ok:true,state:radioPublicStateV372(r),bunkerStock:r.bunkerStock});
+
+  cb({
+    ok:true,
+    accepted:true,
+    startDay:r.day+1,
+    state:radioPublicStateV372(r),
+    message:`수락했습니다. DAY ${r.day+1}에 이벤트가 시작됩니다.`
+  });
  });
 
  s.on("v372-gameshow-spin",(payload={},cb=()=>{})=>{
@@ -2746,7 +2862,11 @@ function v3716BreachExteriorThreats(room){
     state:radioPublicStateV372(r),
     bunkerStock:r.bunkerStock,
     weapons:r.weapons,
-    stats:{hp:p.hp,maxHp:p.maxHp||100,sick:!!p.sick}
+    stats:{hp:p.hp,maxHp:p.maxHp||100,sick:!!p.sick},
+    wheel:{
+      sectors:["loseHealth","weapon","boss","supplies","supplies","loseSupplies","maxHealth","sickness"],
+      result:gs.result
+    }
   });
  });
 
@@ -3548,6 +3668,38 @@ safeInterval(()=>{
 
     r.day+=passed;
     r.dayStartedAt+=passed*DAY_LENGTH_MS;
+
+    // V37.3.1 RADIO TIMELINE
+    const rs=r.radioState;
+    if(rs){
+      // 주파수를 잡은 다음 날: 게임 화면에 수락/거절 요청 발생
+      if(rs.pendingSignal && r.day>=rs.pendingSignal.decisionDay && !rs.currentEvent){
+        const signal=rs.pendingSignal;
+        rs.pendingSignal=null;
+        rs.currentEvent={
+          ...signal,
+          phase:"decision",
+          appearedDay:r.day,
+          createdAt:Date.now()
+        };
+
+        radioPushHistoryV372(
+          r,
+          `DAY ${r.day} · ${signal.title} 응답 요청 수신`
+        );
+
+        io.to(r.code).emit("v3731-radio-decision",{
+          event:{...rs.currentEvent},
+          state:radioPublicStateV372(r)
+        });
+      }
+
+      // 수락한 다음 날: 실제 이벤트 시작
+      if(rs.pendingStart && r.day>=rs.pendingStart.startDay){
+        const pending={...rs.pendingStart};
+        radioStartAcceptedEventV3731(r,pending);
+      }
+    }
 
     io.to(r.code).emit("day-changed",{
       day:r.day,
