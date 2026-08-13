@@ -71,7 +71,7 @@ async function initDatabase(){
   admin_god_mode BOOLEAN NOT NULL DEFAULT FALSE,admin_full_bright BOOLEAN NOT NULL DEFAULT FALSE,
   login_token TEXT,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),last_login_at TIMESTAMPTZ)`);
  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS accounts_login_token_idx ON accounts(login_token) WHERE login_token IS NOT NULL`);
- console.log("[AFTERGLOW V37.3.4] Neon DB ready");
+ console.log("[AFTERGLOW V37.3.5] Neon DB ready");
 }
 function safeAccountId(v){return String(v||"").trim().toLowerCase().replace(/[^a-z0-9_-]/g,"").slice(0,24)}
 function safeDisplayName(v){return String(v||"").replace(/[<>]/g,"").trim().slice(0,14)}
@@ -2496,7 +2496,8 @@ function radioPublicStateV372(r){
     homeless:rs.homeless?{...rs.homeless}:null,
     gameShow:rs.gameShow?{...rs.gameShow}:null,
     alienRoute:!!rs.alienRoute,
-    selectedChannel:rs.currentEvent?.channel||rs.pendingSignal?.channel||rs.pendingStart?.channel||null
+    selectedChannel:rs.currentEvent?.channel||rs.pendingSignal?.channel||rs.pendingStart?.channel||null,
+    decisionRequired:rs.currentEvent?.phase==="decision"
   };
 }
 
@@ -4073,7 +4074,7 @@ async function startServer(){
     const port=Number(process.env.PORT)||3000;
 
     server.listen(port,"0.0.0.0",()=>{
-      console.log(`[AFTERGLOW V37.3.4] server listening on ${port}`);
+      console.log(`[AFTERGLOW V37.3.5] server listening on ${port}`);
       console.log("[V31] Neon DB ready");
     });
   }catch(e){
