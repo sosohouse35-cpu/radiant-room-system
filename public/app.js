@@ -711,6 +711,8 @@ var hospitalAttackUntil=0;
 var hospitalAttackTargetId=null;
 var hospitalGlass=[];
 var hospitalTripwires=[];
+var interferenceAntennasV3733=[];
+var interferenceNearAntennaV3733=null;
 var expeditionJumping=false;
 var expeditionJumpUntil=0;
 var expeditionFlashlight=false;
@@ -2538,19 +2540,11 @@ function renderRadioPanelV372(){
       `실제 이벤트는 <b>DAY ${s.pendingStart.startDay}</b>에 시작됩니다.`;
     actions.innerHTML="";
   }else if(ev){
-    const body={
-      gameShow:"벙커를 돌며 진행되는 수상한 게임쇼 방송입니다. 참가하면 한 번의 룰렛 결과를 받아야 합니다.",
-      sos:"모스 부호 형태의 SOS 신호입니다. 해독하면 정신력이 크게 떨어지지만 SOS 좌표를 확보합니다.",
-      interference:"주파수 전역에서 이상한 방해 신호가 잡힙니다. 조사하면 전파 방해 탐사지 좌표가 기록되지만 라디오가 재밍됩니다.",
-      homeless:"한 생존자가 라디오로 도움을 요청합니다. 받아들이려면 통조림 2개와 물 2개가 필요합니다.",
-      aliens:"정체를 알 수 없는 구조 신호입니다. 수락하면 특수 Alien Route를 준비할 수 있습니다."
-    }[ev.type]||"알 수 없는 신호입니다.";
-
-    event.innerHTML=`<b>${ev.title}</b><br>${body}`;
-    actions.innerHTML=`
-      <button data-radio-choice="accept">수락</button>
-      <button data-radio-choice="decline">무시</button>
-    `;
+    event.innerHTML=
+      `<b>${ev.channel||""} ${ev.title}</b><br>`+
+      `이벤트 요청이 도착했습니다. 라디오에서는 선택할 수 없습니다.<br>`+
+      `<small>게임 화면의 수락/거절 창에서 결정하세요.</small>`;
+    actions.innerHTML="";
   }else if(s.gameShow?.active && !s.gameShow?.spun){
     event.innerHTML="<b>GAME SHOW HOST</b><br>룰렛이 준비되었습니다. 한 번 돌리면 결과를 되돌릴 수 없습니다.";
     actions.innerHTML=`<button data-gameshow-spin="1">룰렛 돌리기</button>`;
@@ -2768,20 +2762,43 @@ ioClient.on("v372-radio-ready",()=>{});
 
 ioClient.on("v3731-radio-decision",payload=>{
   radioStateV372=payload?.state||radioStateV372;
-
   const ev=payload?.event;
   if(!ev)return;
 
-  // 게임 중 어디에 있든 라디오 응답 화면을 앞으로 띄운다.
+  // 라디오 패널은 열지 않는다. 게임 화면 위에 별도 응답창만 표시.
   const panel=$("radioPanelV372");
-  if(panel){
-    panel.classList.remove("hidden");
-    panel.style.zIndex="10000";
-  }
+  if(panel)panel.classList.add("hidden");
 
-  renderRadioPanelV372();
-  toast(`📻 ${ev.channel} FM · 응답 요청 도착`);
+  $("radioDecisionTitleV3733").textContent=ev.title||"RADIO EVENT";
+  $("radioDecisionChannelV3733").textContent=`${ev.channel||"---"} FM`;
+
+  const text={
+    gameShow:"수상한 게임쇼 방송에서 참가 여부를 묻고 있습니다.",
+    sos:"SOS 발신자가 구조 신호에 응답할지 묻고 있습니다.",
+    interference:"정체불명의 전파 방해 신호를 추적할지 묻고 있습니다.",
+    homeless:"생존자가 벙커에 들여보내 달라고 요청합니다.",
+    aliens:"정체불명의 발신자가 좌표를 전송하려 합니다."
+  }[ev.type]||"라디오 이벤트에 응답하시겠습니까?";
+
+  $("radioDecisionTextV3733").textContent=text;
+  $("radioDecisionOverlayV3733").classList.remove("hidden");
 });
+
+
+function answerRadioDecisionV3733(choice){
+  ioClient.emit("v372-radio-choice",roomIdentityPayloadV3723({choice,scene:bunkerRunning?"bunker":"room"}),r=>{
+    if(!r?.ok){
+      toast(r?.message||"라디오 이벤트 처리 실패");
+      return;
+    }
+    radioStateV372=r.state||radioStateV372;
+    $("radioDecisionOverlayV3733")?.classList.add("hidden");
+    renderRadioPanelV372();
+    toast(r.message|| (choice==="accept"?"이벤트를 수락했습니다.":"이벤트를 거절했습니다."));
+  });
+}
+if($("radioDecisionAcceptV3733"))$("radioDecisionAcceptV3733").onclick=()=>answerRadioDecisionV3733("accept");
+if($("radioDecisionDeclineV3733"))$("radioDecisionDeclineV3733").onclick=()=>answerRadioDecisionV3733("decline");
 
 ioClient.on("v3731-radio-started",payload=>{
   radioStateV372=payload?.state||radioStateV372;
@@ -4734,6 +4751,24 @@ function exFindNear(){
     return;
   }
 
+  interferenceNearAntennaV3733=null;
+  if(expeditionLocation==="interference"){
+    let antennaBest=999;
+    for(const a of interferenceAntennasV3733){
+      if(a.disabled)continue;
+      const d=Math.hypot(expeditionPlayer.x+15-a.x,expeditionPlayer.y+15-a.y);
+      if(d<85 && d<antennaBest){
+        antennaBest=d;
+        interferenceNearAntennaV3733=a;
+      }
+    }
+    if(interferenceNearAntennaV3733){
+      $("expeditionPrompt").classList.remove("hidden");
+      $("expeditionPrompt").textContent="E · 전파 안테나 해제";
+      return;
+    }
+  }
+
   let best=999;
 
   expeditionItems.forEach(item=>{
@@ -4868,6 +4903,44 @@ hospitalGlass.forEach(g=>{
       exctx.strokeStyle="#877b6d";exctx.lineWidth=5;
       exctx.beginPath();exctx.moveTo(sx+7,sy+18);exctx.lineTo(sx+30,sy+18);exctx.stroke();
     }
+  }else if(expeditionLocation==="sos"){
+    exctx.fillStyle="#3f4947";
+    exctx.fillRect(0,0,vw,vh);
+    const tile=64;
+    for(let y=Math.floor(camY/tile)*tile;y<camY+vh+tile;y+=tile){
+      for(let x=Math.floor(camX/tile)*tile;x<camX+vw+tile;x+=tile){
+        exctx.fillStyle=((Math.floor(x/tile)+Math.floor(y/tile))%2===0)?"#465350":"#3a4543";
+        exctx.fillRect(x-camX,y-camY,tile,tile);
+      }
+    }
+    exctx.fillStyle="#8e7b58";
+    [[180,130,220,80],[520,280,270,70],[800,520,230,80]].forEach(r=>exctx.fillRect(r[0]-camX,r[1]-camY,r[2],r[3]));
+    exctx.fillStyle="#d3c496";
+    exctx.font="bold 16px sans-serif";
+    exctx.fillText("ABANDONED SOS CAMP",430-camX,90-camY);
+  }else if(expeditionLocation==="interference"){
+    exctx.fillStyle="#30363c";
+    exctx.fillRect(0,0,vw,vh);
+    const tile=56;
+    for(let y=Math.floor(camY/tile)*tile;y<camY+vh+tile;y+=tile){
+      for(let x=Math.floor(camX/tile)*tile;x<camX+vw+tile;x+=tile){
+        exctx.fillStyle=((Math.floor(x/tile)+Math.floor(y/tile))%2===0)?"#363d43":"#2b3237";
+        exctx.fillRect(x-camX,y-camY,tile,tile);
+      }
+    }
+    interferenceAntennasV3733.forEach(a=>{
+      const sx=a.x-camX,sy=a.y-camY;
+      exctx.strokeStyle=a.disabled?"#666":"#d4d8da";
+      exctx.lineWidth=5;
+      exctx.beginPath(); exctx.moveTo(sx,sy+42); exctx.lineTo(sx,sy-28); exctx.stroke();
+      exctx.beginPath(); exctx.moveTo(sx-24,sy+42); exctx.lineTo(sx+24,sy+42); exctx.stroke();
+      exctx.beginPath(); exctx.arc(sx,sy-34,18,Math.PI*.15,Math.PI*.85); exctx.stroke();
+      exctx.fillStyle=a.disabled?"#555":"#b54a3e";
+      exctx.beginPath();exctx.arc(sx,sy-32,6,0,Math.PI*2);exctx.fill();
+      exctx.fillStyle="#ddd";
+      exctx.font="bold 11px sans-serif";
+      exctx.fillText(a.disabled?"OFFLINE":"JAMMER",sx-24,sy+60);
+    });
   }else{
     // 식료품점
     exctx.fillStyle="#aca58d";
@@ -5350,6 +5423,20 @@ function expeditionLoop(){
 }
 
 function takeExpeditionItem(){
+  if(interferenceNearAntennaV3733){
+    const target=interferenceNearAntennaV3733;
+    ioClient.emit("disable-interference-antenna",roomIdentityPayloadV3723({
+      scene:"expedition",
+      antennaId:target.id
+    }),r=>{
+      if(!r?.ok)return toast(r?.message||"안테나 해제 실패");
+      interferenceAntennasV3733=r.antennas||interferenceAntennasV3733;
+      interferenceNearAntennaV3733=null;
+      toast(r.cleared?"안테나 3개 모두 해제 · 라디오 재밍 종료":`안테나 해제 ${r.disabled}/${r.total}`);
+    });
+    return;
+  }
+
   if(expeditionReturnNear){
     returnToBunker();
     return;
@@ -5458,6 +5545,8 @@ updateV32HudVisibility();
     : null;
   hospitalGlass=data.hospitalGlass||[];
   hospitalTripwires=data.hospitalTripwires||[];
+  interferenceAntennasV3733=data.interferenceAntennas||[];
+  interferenceNearAntennaV3733=null;
 
   expeditionPlayer={
     x:expeditionReturnPoint.x,
@@ -5512,6 +5601,8 @@ function returnToBunker(){
     hospitalAbomination=null;
     hospitalGlass=[];
     hospitalTripwires=[];
+    interferenceAntennasV3733=[];
+    interferenceNearAntennaV3733=null;
     expeditionMutants={};
     $("expeditionUI").classList.add("hidden");
 
@@ -5677,6 +5768,10 @@ $("expeditionDecline").onclick=()=>{
 };
 
 ioClient.on("expedition-started",beginExpeditionFromServer);
+
+ioClient.on("interference-antennas",list=>{
+  interferenceAntennasV3733=list||[];
+});
 
 ioClient.on("expedition-item-taken",d=>{
   const item=expeditionItems.find(i=>i.id===d.itemId);
